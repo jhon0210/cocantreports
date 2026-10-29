@@ -1,0 +1,240 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Rol {
+  id_perfil Int       @id
+  perfil    String?   @unique(map: "roles_perfil_key") @db.VarChar
+  usuarios  Usuario[]
+
+  @@map("roles")
+}
+
+model ArchivoCarga {
+  id            String   @id @db.Uuid
+  propietarioId Int?     @map("propietario_id")
+  propietario   Usuario? @relation(fields: [propietarioId], references: [id_user], onDelete: SetNull, onUpdate: NoAction, map: "archivos_cargas_propietario_fkey")
+  uso           String   @db.VarChar(20)
+  nombre        String   @db.VarChar(150)
+  mime          String   @db.VarChar(30)
+  tamano        Int
+  sha256        String   @db.VarChar(44)
+  claveTemporal String   @unique @map("clave_temporal") @db.VarChar(150)
+  clave         String   @unique @db.VarChar(150)
+  estado        String   @default("PENDIENTE") @db.VarChar(20)
+  vinculoId     Int?     @map("vinculo_id")
+  creadoEn      DateTime @default(now()) @map("creado_en") @db.Timestamptz
+  expiraEn      DateTime @map("expira_en") @db.Timestamptz
+  migracion     ArchivoMigracion?
+
+  @@index([estado, expiraEn], map: "archivos_cargas_expiracion_idx")
+  @@index([uso, vinculoId, estado], map: "archivos_cargas_vinculo_idx")
+  @@map("archivos_cargas")
+}
+
+model ArchivoMigracion {
+  origen        String       @db.VarChar(20)
+  origenId      Int          @map("origen_id")
+  huella        String       @db.VarChar(64)
+  archivoId     String       @unique @map("archivo_id") @db.Uuid
+  archivo       ArchivoCarga @relation(fields: [archivoId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  estado        String       @default("COPIANDO") @db.VarChar(20)
+  codigoError   String?      @map("codigo_error") @db.VarChar(30)
+  actualizadoEn DateTime     @default(now()) @updatedAt @map("actualizado_en") @db.Timestamptz
+
+  @@id([origen, origenId, huella])
+  @@map("archivos_migraciones")
+}
+
+model Cargo {
+  id_cargo Int       @id @default(autoincrement())
+  cargo    String?   @db.VarChar
+  estado   String?   @db.VarChar
+  usuarios Usuario[]
+
+  @@map("cargos")
+}
+
+model Material {
+  id_mat      Int       @id @default(autoincrement())
+  codigo      Int?      @unique(map: "materiales_codigo_key")
+  nomMaterial String?   @db.VarChar
+  reportes    Reporte[]
+  balances    BalanceMensual[]
+
+  @@map("materiales")
+}
+
+model Eca {
+  id_eca       Int           @id @default(autoincrement())
+  nomEca       String?       @db.VarChar
+  direccion    String?       @db.VarChar
+  comuna       String?       @db.VarChar
+  estado       String?       @db.VarChar
+  categoria    String?       @db.VarChar
+  ruta         String?       @db.VarChar
+  macroruta    String?       @db.VarChar
+  representante String?     @db.VarChar(150)
+  codigo_nuec   String?     @db.VarChar(80)
+  adjuntos      EcaAdjunto[]
+  reportes     Reporte[]
+  usuarios     Usuario[]
+  reportesMacroruta Reporte[] @relation("MacrorutaReporte")
+  balances     BalanceMensual[]
+
+  @@map("ecas")
+}
+
+model EcaAdjunto {
+  id        Int    @id @default(autoincrement())
+  id_eca    Int
+  nombre    String @db.VarChar(150)
+  tamano    Int
+  contenido Bytes?
+  eca       Eca    @relation(fields: [id_eca], references: [id_eca], onDelete: Cascade)
+
+  @@index([id_eca])
+  @@map("eca_adjuntos")
+}
+
+model Usuario {
+  archivos      ArchivoCarga[]
+  id_user       Int            @id @default(autoincrement())
+  nomUser       String?        @db.VarChar
+  apeUser       String?        @db.VarChar
+  usuario       String?        @unique(map: "usuarios_usuario_key") @db.VarChar
+  clave         String?        @db.VarChar
+  cedula        Int?
+  id_perfil     Int?
+  id_cargo      Int?
+  /** ECA asociada; solo la usa el perfil Administrador Eca. */
+  id_eca        Int?
+  activo        Boolean        @default(true)
+  rol           Rol?           @relation(fields: [id_perfil], references: [id_perfil], onDelete: NoAction, onUpdate: NoAction)
+  cargo         Cargo?         @relation(fields: [id_cargo], references: [id_cargo], onDelete: NoAction, onUpdate: NoAction)
+  eca           Eca?           @relation(fields: [id_eca], references: [id_eca], onDelete: SetNull, onUpdate: NoAction)
+  reportes      Reporte[]
+  refreshTokens RefreshToken[]
+  balances      BalanceMensual[]
+
+  @@index([id_eca], map: "usuarios_id_eca_idx")
+  @@map("usuarios")
+}
+
+model EstadoRecuperador {
+  id_estado     Int           @id @db.SmallInt
+  nombre        String        @unique(map: "estados_recuperador_nombre_key") @db.VarChar(20)
+  recuperadores Recuperador[]
+
+  @@map("estados_recuperador")
+}
+
+model Recuperador {
+  id_recuperador Int               @id @default(autoincrement())
+  nombre         String            @db.VarChar(100)
+  apellido       String            @db.VarChar(100)
+  cedula         String            @unique(map: "recuperadores_cedula_key") @db.VarChar(15)
+  /** Dato histórico sin relación: fuera del cliente Prisma para no asignar ECAs a recuperadores. */
+  id_eca         Int?              @ignore
+  id_estado      Int               @default(1) @db.SmallInt
+  bancarizado    Boolean           @default(false)
+  foto           String?
+  codigo_registro String?          @unique(map: "recuperadores_codigo_registro_key") @db.VarChar(40)
+  /** Formato de inscripción y caracterización (secciones 1 a 5); validado en la capa de aplicación. */
+  caracterizacion Json?
+  FechaRegistro  DateTime          @default(dbgenerated("CURRENT_DATE")) @db.Date
+  estado         EstadoRecuperador @relation(fields: [id_estado], references: [id_estado], onDelete: NoAction, onUpdate: NoAction)
+  reportes       Reporte[]
+  documentos     RecuperadorDocumento[]
+
+  @@index([id_eca], map: "recuperadores_id_eca_idx")
+  @@map("recuperadores")
+}
+
+model Reporte {
+  consecutivo    Int          @id @default(autoincrement())
+  comprobante    String?      @db.Uuid
+  /** Número de reporte visible: consecutivo desde 1 compartido por todas las líneas de un comprobante. */
+  numero_reporte Int          @default(dbgenerated("nextval('reporte_numero_seq'::regclass)"))
+  id_mat         Int
+  cantidad       Float
+  valor          Int
+  id_user        Int
+  id_eca         Int
+  id_eca_macroruta Int?
+  id_recuperador Int?
+  FechaRegistro  DateTime     @default(dbgenerated("CURRENT_DATE")) @db.Date
+  FechaVenta     DateTime     @default(dbgenerated("CURRENT_DATE")) @db.Date
+  material       Material     @relation(fields: [id_mat], references: [id_mat], onDelete: NoAction, onUpdate: NoAction)
+  usuario        Usuario      @relation(fields: [id_user], references: [id_user], onDelete: NoAction, onUpdate: NoAction)
+  eca            Eca          @relation(fields: [id_eca], references: [id_eca], onDelete: NoAction, onUpdate: NoAction)
+  macrorutaEca   Eca?         @relation("MacrorutaReporte", fields: [id_eca_macroruta], references: [id_eca], onDelete: SetNull)
+  recuperador    Recuperador? @relation(fields: [id_recuperador], references: [id_recuperador], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id_user], map: "matReportado_id_user_idx")
+  @@index([id_recuperador], map: "matReportado_id_recuperador_idx")
+  @@index([FechaVenta], map: "matReportado_FechaVenta_idx")
+  @@index([comprobante], map: "matReportado_comprobante_idx")
+  @@index([numero_reporte], map: "matReportado_numero_reporte_idx")
+  @@map("matReportado")
+}
+
+model RecuperadorDocumento {
+  id             Int @id @default(autoincrement())
+  id_recuperador Int
+  tipo           String @db.VarChar(20)
+  nombre         String @db.VarChar(150)
+  mime           String @db.VarChar(30)
+  tamano         Int
+  contenido      Bytes?
+  recuperador    Recuperador @relation(fields: [id_recuperador], references: [id_recuperador], onDelete: Cascade)
+
+  @@unique([id_recuperador, tipo])
+  @@map("recuperador_documentos")
+}
+
+model BalanceMensual {
+  id                    Int      @id @default(autoincrement())
+  periodo               DateTime @db.Date
+  id_eca                Int
+  id_mat                Int
+  inventario_inicial_kg Decimal  @db.Decimal(18, 3)
+  salidas_kg            Decimal  @db.Decimal(18, 3)
+  rechazos_kg           Decimal  @db.Decimal(18, 3)
+  entradas_cat_kg       Decimal? @db.Decimal(18, 3)
+  entradas_al_guardar_kg Decimal @db.Decimal(18, 3)
+  soporte_salidas       String?  @db.VarChar(1000)
+  receptor_rechazos     String?  @db.VarChar(500)
+  observaciones         String?  @db.VarChar(1000)
+  id_user               Int
+  version               Int      @default(1)
+  actualizado_en        DateTime @updatedAt @db.Timestamptz(6)
+  eca                   Eca      @relation(fields: [id_eca], references: [id_eca], onDelete: Restrict)
+  material              Material @relation(fields: [id_mat], references: [id_mat], onDelete: Restrict)
+  usuario               Usuario  @relation(fields: [id_user], references: [id_user], onDelete: Restrict)
+
+  @@unique([periodo, id_eca, id_mat])
+  @@index([id_eca, id_mat, periodo])
+  @@map("balance_mensual")
+}
+
+model RefreshToken {
+  id          String    @id @db.Uuid
+  familia     String    @db.Uuid
+  id_user     Int
+  token_hash  String    @db.VarChar(64)
+  expires_at  DateTime  @db.Timestamptz(6)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  revoked_at  DateTime? @db.Timestamptz(6)
+  replaced_by String?   @db.Uuid
+  usuario     Usuario   @relation(fields: [id_user], references: [id_user], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([id_user], map: "refresh_tokens_id_user_idx")
+  @@index([familia], map: "refresh_tokens_familia_idx")
+  @@map("refresh_tokens")
+}

@@ -1,0 +1,250 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cocjant staging - red privada, Aurora y almacenamiento
+Parameters:
+  Domain:
+    Type: String
+    Default: cocjant-esp.com
+    AllowedPattern: '[a-z0-9][a-z0-9.-]+'
+  AuroraEngineVersion:
+    Type: String
+    Description: Version regional verificada compatible con Serverless v2.
+  BackupRetentionDays:
+    Type: Number
+    Default: 1
+    Description: Propuesta Free plan tras rechazo de 7 dias; comprobar admision real antes de afirmar creacion.
+    MinValue: 1
+    MaxValue: 35
+  S3PrefixListId:
+    Type: String
+    AllowedPattern: 'pl-[a-f0-9]+'
+    Description: Managed prefix list com.amazonaws.us-east-1.s3 verificada en esta region.
+Rules:
+  Region:
+    Assertions:
+      - Assert: !Equals [!Ref 'AWS::Region', us-east-1]
+        AssertDescription: Desplegar solo en us-east-1.
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.42.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.42.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: {VpcId: !Ref Vpc}
+  RouteA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {RouteTableId: !Ref RouteTable, SubnetId: !Ref SubnetA}
+  RouteB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: {RouteTableId: !Ref RouteTable, SubnetId: !Ref SubnetB}
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Lambda hacia PostgreSQL y endpoints privados
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - {IpProtocol: tcp, FromPort: 5432, ToPort: 5432, DestinationSecurityGroupId: !Ref DatabaseSecurityGroup}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationSecurityGroupId: !Ref EndpointSecurityGroup}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, DestinationPrefixListId: !Ref S3PrefixListId}
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Aurora privada
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - {IpProtocol: '-1', CidrIp: 127.0.0.1/32}
+  DatabaseIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DatabaseSecurityGroup
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Endpoint Secrets Manager
+      VpcId: !Ref Vpc
+      SecurityGroupEgress:
+        - {IpProtocol: '-1', CidrIp: 127.0.0.1/32}
+  EndpointIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref EndpointSecurityGroup
+      SourceSecurityGroupId: !Ref LambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref RouteTable]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+            Resource: !Sub '${FilesBucket.Arn}/*'
+  SecretsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+      SecurityGroupIds: [!Ref EndpointSecurityGroup]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: secretsmanager:GetSecretValue
+            Resource: [!Ref ApplicationSecret, !Ref MigrationSecret]
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subredes privadas Cocjant
+      SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+  DatabaseLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/rds/cluster/cocjant-staging/postgresql
+      RetentionInDays: 14
+  Database:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    DependsOn: DatabaseLogs
+    Properties:
+      DBClusterIdentifier: cocjant-staging
+      Engine: aurora-postgresql
+      EngineMode: provisioned
+      EngineVersion: !Ref AuroraEngineVersion
+      DatabaseName: cocjant
+      MasterUsername: cocjant_owner
+      ManageMasterUserPassword: true
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VpcSecurityGroupIds: [!Ref DatabaseSecurityGroup]
+      StorageEncrypted: true
+      BackupRetentionPeriod: !Ref BackupRetentionDays
+      DeletionProtection: true
+      CopyTagsToSnapshot: true
+      EnableCloudwatchLogsExports: [postgresql]
+      ServerlessV2ScalingConfiguration: {MinCapacity: 0.5, MaxCapacity: 1}
+  Writer:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DBInstanceIdentifier: cocjant-staging-writer
+      DBClusterIdentifier: !Ref Database
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+      PubliclyAccessible: false
+      AutoMinorVersionUpgrade: true
+  ApplicationSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: cocjant-staging/application
+      SecretString: '{}'
+  MigrationSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: cocjant-staging/migration
+      SecretString: '{}'
+  FilesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub cocjant-staging-files-${AWS::AccountId}
+      OwnershipControls: {Rules: [{ObjectOwnership: BucketOwnerEnforced}]}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: {Status: Enabled}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: [!Sub 'https://staging.${Domain}']
+            AllowedMethods: [POST, GET, HEAD]
+            AllowedHeaders: [Content-Type, 'x-amz-*']
+            ExposedHeaders: [ETag, x-amz-checksum-sha256]
+            MaxAge: 300
+      LifecycleConfiguration:
+        Rules:
+          - Id: temporales-abandonados
+            Status: Enabled
+            Prefix: pendientes/
+            ExpirationInDays: 2
+            NoncurrentVersionExpiration: {NoncurrentDays: 2}
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 1}
+  FilesPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FilesBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt FilesBucket.Arn, !Sub '${FilesBucket.Arn}/*']
+            Condition: {Bool: {'aws:SecureTransport': 'false'}}
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub cocjant-staging-frontend-${AWS::AccountId}
+      OwnershipControls: {Rules: [{ObjectOwnership: BucketOwnerEnforced}]}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: {Status: Enabled}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+Outputs:
+  VpcId: {Value: !Ref Vpc}
+  SubnetA: {Value: !Ref SubnetA}
+  SubnetB: {Value: !Ref SubnetB}
+  LambdaSecurityGroup: {Value: !Ref LambdaSecurityGroup}
+  ApplicationSecretArn: {Value: !Ref ApplicationSecret}
+  MigrationSecretArn: {Value: !Ref MigrationSecret}
+  DatabaseAdminSecretArn: {Value: !GetAtt Database.MasterUserSecret.SecretArn}
+  DatabaseEndpoint: {Value: !GetAtt Database.Endpoint.Address}
+  FilesBucket: {Value: !Ref FilesBucket}
+  FrontendBucket: {Value: !Ref FrontendBucket}

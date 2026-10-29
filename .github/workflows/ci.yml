@@ -1,0 +1,55 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Backend
+        working-directory: backend
+        run: |
+          npm ci --ignore-scripts
+          npx prisma generate
+          npx tsc --noEmit -p tsconfig.json
+          npm run build
+          npm test -- --runInBand
+          node --test ../tools/aws/infra.test.cjs
+      - name: Frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+          npm test
+      - name: CloudFormation (sin credenciales ni recursos)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cfn-lint"
+          "$RUNNER_TEMP/cfn-lint/bin/pip" install -r tools/aws/cfn-lint-requirements.txt
+          "$RUNNER_TEMP/cfn-lint/bin/cfn-lint" --region us-east-1 --template infra/cloudformation/*.yml
+      - name: Lambda, PostgreSQL, S3 y migraciones sinteticas
+        shell: pwsh
+        run: ./tools/aws/Test-LambdaImage.ps1 -S3 -SchemaExecutor
+      - name: Compatibilidad con esquema anterior
+        shell: pwsh
+        run: ./tools/aws/Test-LambdaImage.ps1
+      - name: Dependencias de produccion (bloqueo antes de desplegar)
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=high
+      - name: Dependencias de produccion frontend
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high

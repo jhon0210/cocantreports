@@ -1,0 +1,103 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.985 0.002 247);
+  --foreground: oklch(0.21 0.02 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 255);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 255);
+  /* Verde esmeralda oscuro: contraste >= 4.5:1 con texto blanco (WCAG AA) */
+  --primary: oklch(0.48 0.11 160);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.01 160);
+  --secondary-foreground: oklch(0.3 0.06 160);
+  --muted: oklch(0.96 0.005 250);
+  --muted-foreground: oklch(0.47 0.02 255);
+  --accent: oklch(0.94 0.04 160);
+  --accent-foreground: oklch(0.28 0.07 160);
+  --destructive: oklch(0.52 0.21 27);
+  --border: oklch(0.9 0.008 250);
+  --input: oklch(0.82 0.01 250);
+  --ring: oklch(0.55 0.13 160);
+  --sidebar: oklch(0.2 0.03 165);
+  --sidebar-foreground: oklch(0.95 0.01 165);
+  --sidebar-muted: oklch(0.78 0.02 165);
+  --sidebar-accent: oklch(0.3 0.06 160);
+  --sidebar-border: oklch(0.3 0.03 165);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* Escala compacta: todo el sistema de espaciado y tipografía (rem) se reduce proporcionalmente */
+  html {
+    font-size: 14px;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 0.9286rem; /* 13px */
+    line-height: 1.45;
+  }
+  /* Foco visible consistente para teclado */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in-up 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
+}

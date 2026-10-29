@@ -1,0 +1,10 @@
+account_id                   = "000000000000"
+hosted_zone_id               = "REEMPLAZAR_ZONA_ROUTE53_VERIFICADA"
+domain                       = "cocjant-esp.com"
+budget_email                 = "REEMPLAZAR_CORREO_DE_ALERTAS"
+aurora_engine_version        = "REEMPLAZAR_VERSION_REGIONAL_VERIFICADA"
+backup_retention_days        = 7 # Retencion aprobada para staging; apply requiere su propio plan aprobado.
+api_image_digest             = "sha256:REEMPLAZAR_DIGEST_VALIDADO"
+migration_image_digest       = "sha256:REEMPLAZAR_DIGEST_VALIDADO"
+github_repository            = "jhon0210/cocantreports"
+github_oidc_provider_arn      = "arn:aws:iam::000000000000:oidc-provider/token.actions.githubusercontent.com"

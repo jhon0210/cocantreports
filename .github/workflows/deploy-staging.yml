@@ -1,0 +1,62 @@
+name: Deploy staging
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Escribe DESPLEGAR-STAGING (solo codigo; no crea infraestructura ni copia archivos reales)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main' && inputs.confirmation == 'DESPLEGAR-STAGING'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: us-east-1
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      ECR_REPOSITORY: cocjant-staging-api
+      API_FUNCTION: cocjant-staging-api
+      MIGRATION_FUNCTION: cocjant-staging-migrate
+      FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+      API_URL: ${{ vars.API_URL }}
+      FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Construir frontend
+        working-directory: frontend
+        env:
+          VITE_API_URL: ${{ vars.API_URL }}
+        run: |
+          test -n "$VITE_API_URL"
+          npm ci
+          npm run build
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-session-name: cocjant-staging-${{ github.run_id }}
+          role-duration-seconds: 3600
+          mask-aws-account-id: true
+      - name: Publicar digests, migrar esquema, cambiar alias y publicar frontend
+        run: node tools/aws/deploy-staging.cjs

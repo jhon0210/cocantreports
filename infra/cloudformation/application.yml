@@ -1,0 +1,526 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cocjant staging - Lambda, HTTP API, CloudFront y OIDC
+Parameters:
+  Domain: {Type: String, Default: cocjant-esp.com}
+  HostedZoneId: {Type: String, Default: ''}
+  UseCustomDomain: {Type: String, Default: 'true', AllowedValues: ['true', 'false']}
+  ReserveConcurrency: {Type: String, Default: 'true', AllowedValues: ['true', 'false']}
+  FrontendOrigin:
+    Type: String
+    Default: https://pending.invalid
+    AllowedPattern: 'https://[a-zA-Z0-9.-]+'
+    Description: En modo provisional actualizar con el origen CloudFront antes de publicar frontend.
+  SubnetA: {Type: 'AWS::EC2::Subnet::Id'}
+  SubnetB: {Type: 'AWS::EC2::Subnet::Id'}
+  LambdaSecurityGroup: {Type: 'AWS::EC2::SecurityGroup::Id'}
+  ApplicationSecretArn: {Type: String}
+  MigrationSecretArn: {Type: String}
+  FilesBucket: {Type: String}
+  FrontendBucket: {Type: String}
+  ApiImageDigest:
+    Type: String
+    AllowedPattern: 'sha256:[a-f0-9]{64}'
+  MigrationImageDigest:
+    Type: String
+    AllowedPattern: 'sha256:[a-f0-9]{64}'
+  LiveVersion:
+    Type: String
+    Default: initial
+    AllowedPattern: 'initial|[1-9][0-9]*'
+    Description: initial solo en CREATE; en UPDATE indicar version live actual comprobada.
+  GithubRepository:
+    Type: String
+    Default: jhon0210/cocantreports
+    AllowedPattern: '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
+  GithubOidcProviderArn:
+    Type: String
+    AllowedPattern: 'arn:aws:iam::[0-9]{12}:oidc-provider/token.actions.githubusercontent.com'
+  BudgetEmail: {Type: String, Default: ''}
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 80
+    MinValue: 1
+    Description: Referencia anterior; revisar frente a creditos. No impone limite de gasto.
+Rules:
+  CustomDomainZone:
+    RuleCondition: !Equals [!Ref UseCustomDomain, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref HostedZoneId, '']]
+        AssertDescription: El dominio propio requiere una zona DNS verificada.
+  Region:
+    Assertions:
+      - Assert: !Equals [!Ref 'AWS::Region', us-east-1]
+        AssertDescription: ACM y CloudFront requieren esta plantilla en us-east-1.
+Conditions:
+  InitialDeployment: !Equals [!Ref LiveVersion, initial]
+  CustomDomain: !Equals [!Ref UseCustomDomain, 'true']
+  ProvisionalDomain: !Equals [!Ref UseCustomDomain, 'false']
+  Reserved: !Equals [!Ref ReserveConcurrency, 'true']
+  HasEmail: !Not [!Equals [!Ref BudgetEmail, '']]
+Resources:
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: cocjant-staging-api
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: secret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - {Effect: Allow, Action: 'secretsmanager:GetSecretValue', Resource: !Ref ApplicationSecretArn}
+        - PolicyName: files
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${FilesBucket}/pendientes/*
+                  - !Sub arn:${AWS::Partition}:s3:::${FilesBucket}/archivos/*
+  MigrationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: cocjant-staging-migrate
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: secret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - {Effect: Allow, Action: 'secretsmanager:GetSecretValue', Resource: !Ref MigrationSecretArn}
+  CleanupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: cocjant-staging-cleanup
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: secret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - {Effect: Allow, Action: 'secretsmanager:GetSecretValue', Resource: !Ref ApplicationSecretArn}
+        - PolicyName: files
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${FilesBucket}/pendientes/*
+                  - !Sub arn:${AWS::Partition}:s3:::${FilesBucket}/archivos/*
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/lambda/cocjant-staging-api, RetentionInDays: 14}
+  MigrationLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/lambda/cocjant-staging-migrate, RetentionInDays: 14}
+  CleanupLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/lambda/cocjant-staging-cleanup, RetentionInDays: 14}
+  GatewayLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: /aws/apigateway/cocjant-staging, RetentionInDays: 14}
+  Api:
+    Type: AWS::Lambda::Function
+    DependsOn: ApiLogs
+    Properties:
+      FunctionName: cocjant-staging-api
+      Role: !GetAtt ApiRole.Arn
+      PackageType: Image
+      Code:
+        ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/cocjant-staging-api@${ApiImageDigest}
+      Architectures: [x86_64]
+      MemorySize: 1024
+      Timeout: 28
+      ReservedConcurrentExecutions: !If [Reserved, 2, !Ref 'AWS::NoValue']
+      VpcConfig:
+        SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+      Environment:
+        Variables:
+          NODE_ENV: production
+          APP_SECRET_ARN: !Ref ApplicationSecretArn
+          FILE_STORAGE: s3
+          S3_FILES_BUCKET: !Ref FilesBucket
+          CORS_ORIGINS: !If [CustomDomain, !Sub 'https://staging.${Domain}', !Ref FrontendOrigin]
+          COOKIE_SECURE: 'true'
+          COOKIE_SAMESITE: strict
+          COOKIE_PATH: !If [CustomDomain, /auth, /api/auth]
+  InitialVersion:
+    Type: AWS::Lambda::Version
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      FunctionName: !Ref Api
+      Description: Version inicial; CD publica versiones posteriores con pruebas y migracion previa.
+  LiveAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref Api
+      FunctionVersion: !If [InitialDeployment, !GetAtt InitialVersion.Version, !Ref LiveVersion]
+      Name: live
+  Migrator:
+    Type: AWS::Lambda::Function
+    DependsOn: MigrationLogs
+    Properties:
+      FunctionName: cocjant-staging-migrate
+      Role: !GetAtt MigrationRole.Arn
+      PackageType: Image
+      Code:
+        ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/cocjant-staging-api@${MigrationImageDigest}
+      Architectures: [x86_64]
+      MemorySize: 1024
+      Timeout: 900
+      ReservedConcurrentExecutions: !If [Reserved, 1, !Ref 'AWS::NoValue']
+      VpcConfig:
+        SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+      Environment:
+        Variables:
+          NODE_ENV: production
+          APP_SECRET_ARN: !Ref MigrationSecretArn
+  Cleanup:
+    Type: AWS::Lambda::Function
+    DependsOn: CleanupLogs
+    Properties:
+      FunctionName: cocjant-staging-cleanup
+      Role: !GetAtt CleanupRole.Arn
+      PackageType: Image
+      Code:
+        ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/cocjant-staging-api@${ApiImageDigest}
+      ImageConfig: {Command: [dist/cleanup-files.handler]}
+      Architectures: [x86_64]
+      MemorySize: 512
+      Timeout: 120
+      ReservedConcurrentExecutions: !If [Reserved, 1, !Ref 'AWS::NoValue']
+      VpcConfig:
+        SubnetIds: [!Ref SubnetA, !Ref SubnetB]
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+      Environment:
+        Variables:
+          NODE_ENV: production
+          APP_SECRET_ARN: !Ref ApplicationSecretArn
+          FILE_STORAGE: s3
+          S3_FILES_BUCKET: !Ref FilesBucket
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: CustomDomain
+    Properties:
+      DomainName: !Sub staging.${Domain}
+      SubjectAlternativeNames: [!Sub 'api-staging.${Domain}']
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - {DomainName: !Sub 'staging.${Domain}', HostedZoneId: !Ref HostedZoneId}
+        - {DomainName: !Sub 'api-staging.${Domain}', HostedZoneId: !Ref HostedZoneId}
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: cocjant-staging
+      ProtocolType: HTTP
+      DisableExecuteApiEndpoint: !If [CustomDomain, true, false]
+  Integration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Ref LiveAlias
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 29000
+  Route:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: $default
+      Target: !Sub integrations/${Integration}
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings: {ThrottlingBurstLimit: 10, ThrottlingRateLimit: 5}
+      AccessLogSettings:
+        DestinationArn: !GetAtt GatewayLogs.Arn
+        Format: '{"requestId":"$context.requestId","status":"$context.status","responseLength":"$context.responseLength"}'
+  ApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LiveAlias
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*
+  ApiDomain:
+    Type: AWS::ApiGatewayV2::DomainName
+    Condition: CustomDomain
+    Properties:
+      DomainName: !Sub api-staging.${Domain}
+      DomainNameConfigurations:
+        - CertificateArn: !Ref Certificate
+          EndpointType: REGIONAL
+          SecurityPolicy: TLS_1_2
+  ApiMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Condition: CustomDomain
+    Properties:
+      ApiId: !Ref HttpApi
+      DomainName: !Ref ApiDomain
+      Stage: !Ref Stage
+  ApiDns:
+    Type: AWS::Route53::RecordSet
+    Condition: CustomDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub api-staging.${Domain}
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiDomain.RegionalHostedZoneId
+  OriginAccess:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: cocjant-staging
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  SpaFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: cocjant-staging-spa
+      AutoPublish: true
+      FunctionConfig: {Comment: Rutas React sin ocultar archivos inexistentes, Runtime: cloudfront-js-2.0}
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var last = request.uri.substring(request.uri.lastIndexOf('/') + 1);
+          if (request.uri.endsWith('/') || last.indexOf('.') === -1) request.uri = '/index.html';
+          return request;
+        }
+  ApiPathFunction:
+    Type: AWS::CloudFront::Function
+    Condition: ProvisionalDomain
+    Properties:
+      Name: cocjant-staging-api-path
+      AutoPublish: true
+      FunctionConfig: {Comment: API del mismo origen sin prefijo externo, Runtime: cloudfront-js-2.0}
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          request.uri = request.uri.substring(4) || '/';
+          return request;
+        }
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        IPV6Enabled: true
+        DefaultRootObject: index.html
+        Aliases: !If [CustomDomain, [!Sub 'staging.${Domain}'], !Ref 'AWS::NoValue']
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: frontend
+            DomainName: !Sub ${FrontendBucket}.s3.${AWS::Region}.amazonaws.com
+            OriginAccessControlId: !Ref OriginAccess
+            S3OriginConfig: {OriginAccessIdentity: ''}
+          - Id: api
+            DomainName: !Sub ${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+            CustomOriginConfig: {OriginProtocolPolicy: https-only, OriginSSLProtocols: [TLSv1.2]}
+        CacheBehaviors: !If
+          - ProvisionalDomain
+          - - PathPattern: /api/*
+              TargetOriginId: api
+              ViewerProtocolPolicy: https-only
+              AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+              CachedMethods: [GET, HEAD]
+              CachePolicyId: 413f1600-6f9c-4c8f-a2a5-05bbdb3ca7b2
+              OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+              FunctionAssociations:
+                - EventType: viewer-request
+                  FunctionARN: !GetAtt ApiPathFunction.FunctionARN
+          - !Ref 'AWS::NoValue'
+        DefaultCacheBehavior:
+          TargetOriginId: frontend
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SpaFunction.FunctionARN
+        ViewerCertificate: !If
+          - CustomDomain
+          - AcmCertificateArn: !Ref Certificate
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+  FrontendPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: cloudfront.amazonaws.com}
+            Action: s3:GetObject
+            Resource: !Sub arn:${AWS::Partition}:s3:::${FrontendBucket}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::${FrontendBucket}
+              - !Sub arn:${AWS::Partition}:s3:::${FrontendBucket}/*
+            Condition: {Bool: {'aws:SecureTransport': 'false'}}
+  FrontendDns:
+    Type: AWS::Route53::RecordSetGroup
+    Condition: CustomDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      RecordSets:
+        - Name: !Sub staging.${Domain}
+          Type: A
+          AliasTarget: {DNSName: !GetAtt Distribution.DomainName, HostedZoneId: Z2FDTNDATAQYW2}
+        - Name: !Sub staging.${Domain}
+          Type: AAAA
+          AliasTarget: {DNSName: !GetAtt Distribution.DomainName, HostedZoneId: Z2FDTNDATAQYW2}
+  CleanupSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: cocjant-staging-cleanup
+      ScheduleExpression: rate(1 day)
+      State: DISABLED
+      Targets:
+        - Id: cleanup
+          Arn: !GetAtt Cleanup.Arn
+          Input: '{"operation":"cleanup-files"}'
+          RetryPolicy: {MaximumEventAgeInSeconds: 3600, MaximumRetryAttempts: 2}
+  CleanupPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Cleanup
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CleanupSchedule.Arn
+  Alerts:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: cocjant-staging-alerts
+      Subscription: !If [HasEmail, [{Protocol: email, Endpoint: !Ref BudgetEmail}], !Ref 'AWS::NoValue']
+  ApiErrors:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: cocjant-staging-api-errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions: [{Name: FunctionName, Value: !Ref Api}]
+      AlarmActions: [!Ref Alerts]
+  DatabaseCapacity:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: cocjant-staging-database-capacity
+      Namespace: AWS/RDS
+      MetricName: ACUUtilization
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 90
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions: [{Name: DBInstanceIdentifier, Value: cocjant-staging-writer}]
+      AlarmActions: [!Ref Alerts]
+  Budget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: cocjant-staging
+        BudgetType: COST
+        BudgetLimit: {Amount: !Ref MonthlyBudgetUsd, Unit: USD}
+        TimeUnit: MONTHLY
+        CostFilters: {TagKeyValue: ['Environment$staging']}
+        CostTypes: {IncludeCredit: false, IncludeRefund: false}
+      NotificationsWithSubscribers: !If
+        - HasEmail
+        - - Notification: {ComparisonOperator: GREATER_THAN, Threshold: 50, ThresholdType: PERCENTAGE, NotificationType: ACTUAL}
+            Subscribers: [{SubscriptionType: EMAIL, Address: !Ref BudgetEmail}]
+          - Notification: {ComparisonOperator: GREATER_THAN, Threshold: 80, ThresholdType: PERCENTAGE, NotificationType: ACTUAL}
+            Subscribers: [{SubscriptionType: EMAIL, Address: !Ref BudgetEmail}]
+          - Notification: {ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE, NotificationType: ACTUAL}
+            Subscribers: [{SubscriptionType: EMAIL, Address: !Ref BudgetEmail}]
+        - !Ref 'AWS::NoValue'
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: cocjant-staging-github-deploy
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRoleWithWebIdentity
+            Principal: {Federated: !Ref GithubOidcProviderArn}
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GithubRepository}:environment:staging
+      Policies:
+        - PolicyName: deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - {Effect: Allow, Action: 'ecr:GetAuthorizationToken', Resource: '*'}
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload, ecr:PutImage, ecr:BatchGetImage, ecr:DescribeImages]
+                Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/cocjant-staging-api
+              - Effect: Allow
+                Action: [lambda:UpdateFunctionCode, lambda:GetFunctionConfiguration, lambda:GetFunction, lambda:PublishVersion]
+                Resource: [!GetAtt Api.Arn, !GetAtt Migrator.Arn, !GetAtt Cleanup.Arn]
+              - Effect: Allow
+                Action: [lambda:GetAlias, lambda:UpdateAlias]
+                Resource: !Sub '${Api.Arn}:live'
+              - {Effect: Allow, Action: 'lambda:InvokeFunction', Resource: !GetAtt Migrator.Arn}
+              - {Effect: Allow, Action: 'lambda:InvokeFunction', Resource: !Sub '${Api.Arn}:*'}
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub arn:${AWS::Partition}:s3:::${FrontendBucket}/*
+              - {Effect: Allow, Action: 's3:ListBucket', Resource: !Sub 'arn:${AWS::Partition}:s3:::${FrontendBucket}'}
+              - Effect: Allow
+                Action: cloudfront:CreateInvalidation
+                Resource: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+Outputs:
+  FrontendUrl: {Value: !If [CustomDomain, !Sub 'https://staging.${Domain}', !Sub 'https://${Distribution.DomainName}']}
+  ApiUrl: {Value: !If [CustomDomain, !Sub 'https://api-staging.${Domain}', !Sub 'https://${Distribution.DomainName}/api']}
+  FrontendBucket: {Value: !Ref FrontendBucket}
+  CloudfrontDistributionId: {Value: !Ref Distribution}
+  DeployRoleArn: {Value: !GetAtt DeployRole.Arn}

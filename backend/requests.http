@@ -1,0 +1,179 @@
+# Colección de pruebas para la extensión "REST Client" de VS Code (humao.rest-client).
+# Orden sugerido: ejecutar primero "Login" y luego cualquier otra petición.
+# REST Client conserva las cookies entre peticiones, por lo que /auth/refresh usa la cookie HttpOnly del login.
+
+@host = http://localhost:3000
+
+### Login como operario (devuelve access_token y deja el refresh token en una cookie HttpOnly)
+# @name login
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{
+  "usuario": "operario1",
+  "clave": "Operario123*"
+}
+
+###
+@token = {{login.response.body.access_token}}
+
+### Perfil del usuario autenticado
+GET {{host}}/auth/profile
+Authorization: Bearer {{token}}
+
+### Renovar el access token (rota el refresh token de la cookie)
+POST {{host}}/auth/refresh
+
+### Cerrar sesión (revoca el refresh token)
+POST {{host}}/auth/logout
+
+### Materiales
+GET {{host}}/materiales
+Authorization: Bearer {{token}}
+
+### Detalle de un material
+GET {{host}}/materiales/1
+Authorization: Bearer {{token}}
+
+### Buscar recuperador por cédula (usado por Crear Reporte)
+GET {{host}}/recuperadores/cedula/1090000001
+Authorization: Bearer {{token}}
+
+### Mismo caso de uso, vía /usuarios
+GET {{host}}/usuarios/cedula/1090000001
+Authorization: Bearer {{token}}
+
+### Crear reporte (id_user sale del token y FechaRegistro del servidor; id_eca = ECA donde vendió, ver GET /ecas)
+# @name crearReporte
+POST {{host}}/reportes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "id_recuperador": 2,
+  "id_mat": 1,
+  "id_eca": 1,
+  "cantidad": 12.5,
+  "valor": 800,
+  "FechaVenta": "2026-10-14"
+}
+
+### Listar reportes (Operario: los suyos; Administrador/Coordinador: todos)
+GET {{host}}/reportes?limit=20
+Authorization: Bearer {{token}}
+
+### Detalle de un reporte
+GET {{host}}/reportes/{{crearReporte.response.body.consecutivo}}
+Authorization: Bearer {{token}}
+
+### Debe fallar con 400: el cliente no puede forzar id_user
+POST {{host}}/reportes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "id_recuperador": 2, "id_mat": 1, "id_eca": 1, "cantidad": 5, "valor": 800, "id_user": 1 }
+
+### -------- Administrador --------
+
+### Login como administrador
+# @name loginAdmin
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "usuario": "admin1", "clave": "Admin123*" }
+
+###
+@adminToken = {{loginAdmin.response.body.access_token}}
+
+### Listar ECAs (Administrador/Coordinador)
+GET {{host}}/ecas
+Authorization: Bearer {{adminToken}}
+
+### Crear ECA (solo Administrador)
+POST {{host}}/ecas
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nomEca": "ECA Nueva",
+  "direccion": "Calle 1 # 2-3",
+  "ruta": "R-10",
+  "macroruta": "Macroruta Centro",
+  "comuna": "Comuna 5",
+  "categoria": "A"
+}
+
+### Actualizar ECA
+PUT {{host}}/ecas/1
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "comuna": "Comuna 10" }
+
+### Listar recuperadores (sin foto)
+GET {{host}}/recuperadores
+Authorization: Bearer {{adminToken}}
+
+### Catálogo de estados del recuperador (Activo, Inactivo, Fallecido)
+GET {{host}}/recuperadores/estados
+Authorization: Bearer {{adminToken}}
+
+### Detalle de un recuperador (incluye la foto)
+GET {{host}}/recuperadores/1
+Authorization: Bearer {{adminToken}}
+
+### Crear recuperador (la foto es opcional en la API: data URL JPEG/PNG; id_estado por defecto = Activo)
+# @name crearRecuperador
+POST {{host}}/recuperadores
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nombre": "Sofía",
+  "apellido": "Mejía Torres",
+  "cedula": "1090000099",
+  "id_estado": 1,
+  "bancarizado": true
+}
+
+### Actualizar parcialmente (omitir "foto" la conserva). Estados: 1 Activo, 2 Inactivo, 3 Fallecido
+PATCH {{host}}/recuperadores/{{crearRecuperador.response.body.id_recuperador}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "id_estado": 2, "bancarizado": false }
+
+### Eliminar (204). Responde 409 si el recuperador ya tiene ventas: en ese caso usa id_estado = 2
+DELETE {{host}}/recuperadores/{{crearRecuperador.response.body.id_recuperador}}
+Authorization: Bearer {{adminToken}}
+
+### Catálogos para el formulario de usuarios
+GET {{host}}/catalogos/roles
+Authorization: Bearer {{adminToken}}
+
+###
+GET {{host}}/catalogos/cargos
+Authorization: Bearer {{adminToken}}
+
+### Listar usuarios
+GET {{host}}/usuarios
+Authorization: Bearer {{adminToken}}
+
+### Crear usuario
+POST {{host}}/usuarios
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "nomUser": "Pedro",
+  "apeUser": "Operario",
+  "usuario": "operario2",
+  "clave": "Operario456*",
+  "cedula": 1000000010,
+  "id_perfil": 3,
+  "id_cargo": 1
+}
+
+### Desactivar usuario (baja lógica)
+DELETE {{host}}/usuarios/4
+Authorization: Bearer {{adminToken}}
