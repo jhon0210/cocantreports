@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Cocjant Express - almacenamiento retenido, sin VPC ni base administrada por CloudFormation
+Parameters:
+  FrontendOrigin:
+    Type: String
+    Default: https://pending.invalid
+    AllowedPattern: 'https://[a-zA-Z0-9.-]+'
+Resources:
+  ApplicationSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: cocjant-staging/application
+      SecretString: '{}'
+  MigrationSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: cocjant-staging/migration
+      SecretString: '{}'
+  FilesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub cocjant-staging-files-${AWS::AccountId}
+      OwnershipControls: {Rules: [{ObjectOwnership: BucketOwnerEnforced}]}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: {Status: Enabled}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: [!Ref FrontendOrigin]
+            AllowedMethods: [POST, GET, HEAD]
+            AllowedHeaders: [Content-Type, 'x-amz-*']
+            ExposedHeaders: [ETag, x-amz-checksum-sha256]
+            MaxAge: 300
+      LifecycleConfiguration:
+        Rules:
+          - Id: temporales-abandonados
+            Status: Enabled
+            Prefix: pendientes/
+            ExpirationInDays: 2
+            NoncurrentVersionExpiration: {NoncurrentDays: 2}
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 1}
+  FilesPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FilesBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt FilesBucket.Arn, !Sub '${FilesBucket.Arn}/*']
+            Condition: {Bool: {'aws:SecureTransport': 'false'}}
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub cocjant-staging-frontend-${AWS::AccountId}
+      OwnershipControls: {Rules: [{ObjectOwnership: BucketOwnerEnforced}]}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: {Status: Enabled}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+Outputs:
+  FilesBucket: {Value: !Ref FilesBucket}
+  FrontendBucket: {Value: !Ref FrontendBucket}
+  ApplicationSecretArn: {Value: !Ref ApplicationSecret}
+  MigrationSecretArn: {Value: !Ref MigrationSecret}

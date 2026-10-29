@@ -9,6 +9,7 @@ COPY nest-cli.json tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build
 RUN cp /var/runtime/ca-cert.pem rds-global-bundle.pem
+RUN node -e "require('fs').writeFileSync('gateway-root-bundle.pem', require('tls').rootCertificates.join('\n'))"
 
 FROM build AS production-dependencies
 RUN npm ci --omit=dev --omit=optional --omit=peer --prefer-offline && npm cache clean --force
@@ -18,6 +19,7 @@ WORKDIR /var/task
 COPY --from=build /build/node_modules ./node_modules
 COPY --from=build /build/dist ./dist
 COPY --from=build /build/rds-global-bundle.pem ./
+COPY --from=build /build/gateway-root-bundle.pem ./
 COPY prisma ./prisma
 CMD ["dist/schema-migration.handler"]
 
@@ -28,4 +30,5 @@ COPY --from=production-dependencies /build/node_modules ./node_modules
 COPY --from=build /build/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /build/dist ./dist
 COPY --from=build /build/rds-global-bundle.pem ./
+COPY --from=build /build/gateway-root-bundle.pem ./
 CMD ["dist/lambda.handler"]

@@ -4,6 +4,7 @@ export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   PORT: Joi.number().port().default(3000),
   DATABASE_URL: Joi.string().uri({ scheme: ['postgresql', 'postgres'] }).required(),
+  DB_AUTH_MODE: Joi.string().valid('password', 'iam').default('password'),
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
   JWT_REFRESH_SECRET: Joi.string().min(32).invalid(Joi.ref('JWT_ACCESS_SECRET')).required().messages({
     'any.invalid': 'JWT_REFRESH_SECRET debe ser distinto de JWT_ACCESS_SECRET',

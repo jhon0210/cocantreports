@@ -10,9 +10,13 @@ Parameters:
     Default: https://pending.invalid
     AllowedPattern: 'https://[a-zA-Z0-9.-]+'
     Description: En modo provisional actualizar con el origen CloudFront antes de publicar frontend.
-  SubnetA: {Type: 'AWS::EC2::Subnet::Id'}
-  SubnetB: {Type: 'AWS::EC2::Subnet::Id'}
-  LambdaSecurityGroup: {Type: 'AWS::EC2::SecurityGroup::Id'}
+  SubnetA: {Type: String, Description: Vacio solo para Express sin VPC}
+  SubnetB: {Type: String, Description: Vacio solo para Express sin VPC}
+  LambdaSecurityGroup: {Type: String, Description: Vacio solo para Express sin VPC}
+  DatabaseMode: {Type: String, Default: private, AllowedValues: [private, express]}
+  DatabaseHost: {Type: String, Default: ''}
+  DatabaseResourceId: {Type: String, Default: ''}
+  DatabaseWriterId: {Type: String, Default: cocjant-staging-writer}
   ApplicationSecretArn: {Type: String}
   MigrationSecretArn: {Type: String}
   FilesBucket: {Type: String}
@@ -42,6 +46,22 @@ Parameters:
     MinValue: 1
     Description: Referencia anterior; revisar frente a creditos. No impone limite de gasto.
 Rules:
+  ExpressConnection:
+    RuleCondition: !Equals [!Ref DatabaseMode, express]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref DatabaseHost, '']]
+        AssertDescription: Express requiere el endpoint real.
+      - Assert: !Not [!Equals [!Ref DatabaseResourceId, '']]
+        AssertDescription: Express requiere el resource ID para limitar permisos IAM.
+  PrivateConnection:
+    RuleCondition: !Equals [!Ref DatabaseMode, private]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref SubnetA, '']]
+        AssertDescription: La base privada requiere SubnetA.
+      - Assert: !Not [!Equals [!Ref SubnetB, '']]
+        AssertDescription: La base privada requiere SubnetB.
+      - Assert: !Not [!Equals [!Ref LambdaSecurityGroup, '']]
+        AssertDescription: La base privada requiere security group.
   CustomDomainZone:
     RuleCondition: !Equals [!Ref UseCustomDomain, 'true']
     Assertions:
@@ -57,6 +77,7 @@ Conditions:
   ProvisionalDomain: !Equals [!Ref UseCustomDomain, 'false']
   Reserved: !Equals [!Ref ReserveConcurrency, 'true']
   HasEmail: !Not [!Equals [!Ref BudgetEmail, '']]
+  ExpressDatabase: !Equals [!Ref DatabaseMode, express]
 Resources:
   ApiRole:
     Type: AWS::IAM::Role
@@ -69,8 +90,16 @@ Resources:
             Principal: {Service: lambda.amazonaws.com}
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - !If [ExpressDatabase, !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole', !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole']
       Policies:
+        - !If
+          - ExpressDatabase
+          - PolicyName: database-iam
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - {Effect: Allow, Action: 'rds-db:connect', Resource: !Sub 'arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${DatabaseResourceId}/cocjant_api'}
+          - !Ref 'AWS::NoValue'
         - PolicyName: secret
           PolicyDocument:
             Version: '2012-10-17'
@@ -96,8 +125,16 @@ Resources:
             Principal: {Service: lambda.amazonaws.com}
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - !If [ExpressDatabase, !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole', !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole']
       Policies:
+        - !If
+          - ExpressDatabase
+          - PolicyName: database-iam
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - {Effect: Allow, Action: 'rds-db:connect', Resource: !Sub 'arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${DatabaseResourceId}/cocjant_migrate'}
+          - !Ref 'AWS::NoValue'
         - PolicyName: secret
           PolicyDocument:
             Version: '2012-10-17'
@@ -114,8 +151,16 @@ Resources:
             Principal: {Service: lambda.amazonaws.com}
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - !If [ExpressDatabase, !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole', !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole']
       Policies:
+        - !If
+          - ExpressDatabase
+          - PolicyName: database-iam
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - {Effect: Allow, Action: 'rds-db:connect', Resource: !Sub 'arn:${AWS::Partition}:rds-db:${AWS::Region}:${AWS::AccountId}:dbuser:${DatabaseResourceId}/cocjant_api'}
+          - !Ref 'AWS::NoValue'
         - PolicyName: secret
           PolicyDocument:
             Version: '2012-10-17'
@@ -155,12 +200,14 @@ Resources:
       MemorySize: 1024
       Timeout: 28
       ReservedConcurrentExecutions: !If [Reserved, 2, !Ref 'AWS::NoValue']
-      VpcConfig:
-        SubnetIds: [!Ref SubnetA, !Ref SubnetB]
-        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+      VpcConfig: !If [ExpressDatabase, !Ref 'AWS::NoValue', {SubnetIds: [!Ref SubnetA, !Ref SubnetB], SecurityGroupIds: [!Ref LambdaSecurityGroup]}]
       Environment:
         Variables:
           NODE_ENV: production
+          DB_AUTH_MODE: !If [ExpressDatabase, iam, password]
+          DB_HOST: !Ref DatabaseHost
+          DB_NAME: cocjant
+          DB_USER: cocjant_api
           APP_SECRET_ARN: !Ref ApplicationSecretArn
           FILE_STORAGE: s3
           S3_FILES_BUCKET: !Ref FilesBucket
@@ -194,12 +241,14 @@ Resources:
       MemorySize: 1024
       Timeout: 900
       ReservedConcurrentExecutions: !If [Reserved, 1, !Ref 'AWS::NoValue']
-      VpcConfig:
-        SubnetIds: [!Ref SubnetA, !Ref SubnetB]
-        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+      VpcConfig: !If [ExpressDatabase, !Ref 'AWS::NoValue', {SubnetIds: [!Ref SubnetA, !Ref SubnetB], SecurityGroupIds: [!Ref LambdaSecurityGroup]}]
       Environment:
         Variables:
           NODE_ENV: production
+          DB_AUTH_MODE: !If [ExpressDatabase, iam, password]
+          DB_HOST: !Ref DatabaseHost
+          DB_NAME: cocjant
+          DB_USER: cocjant_migrate
           APP_SECRET_ARN: !Ref MigrationSecretArn
   Cleanup:
     Type: AWS::Lambda::Function
@@ -215,12 +264,14 @@ Resources:
       MemorySize: 512
       Timeout: 120
       ReservedConcurrentExecutions: !If [Reserved, 1, !Ref 'AWS::NoValue']
-      VpcConfig:
-        SubnetIds: [!Ref SubnetA, !Ref SubnetB]
-        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+      VpcConfig: !If [ExpressDatabase, !Ref 'AWS::NoValue', {SubnetIds: [!Ref SubnetA, !Ref SubnetB], SecurityGroupIds: [!Ref LambdaSecurityGroup]}]
       Environment:
         Variables:
           NODE_ENV: production
+          DB_AUTH_MODE: !If [ExpressDatabase, iam, password]
+          DB_HOST: !Ref DatabaseHost
+          DB_NAME: cocjant
+          DB_USER: cocjant_api
           APP_SECRET_ARN: !Ref ApplicationSecretArn
           FILE_STORAGE: s3
           S3_FILES_BUCKET: !Ref FilesBucket
@@ -355,7 +406,7 @@ Resources:
               ViewerProtocolPolicy: https-only
               AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
               CachedMethods: [GET, HEAD]
-              CachePolicyId: 413f1600-6f9c-4c8f-a2a5-05bbdb3ca7b2
+              CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
               OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
               FunctionAssociations:
                 - EventType: viewer-request
@@ -459,7 +510,7 @@ Resources:
       Threshold: 90
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
-      Dimensions: [{Name: DBInstanceIdentifier, Value: cocjant-staging-writer}]
+      Dimensions: [{Name: DBInstanceIdentifier, Value: !Ref DatabaseWriterId}]
       AlarmActions: [!Ref Alerts]
   Budget:
     Type: AWS::Budgets::Budget

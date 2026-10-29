@@ -35,6 +35,16 @@ describe('secretos cloud', () => {
     expect(process.env.MIGRATION_DATABASE_URL).toBe(url);
     expect(process.env.DATABASE_URL).toBeUndefined();
   });
+  it('IAM carga JWT sin guardar un token temporal de BD en Secrets Manager', async () => {
+    Object.assign(process.env, {
+      DB_AUTH_MODE: 'iam', DB_HOST: 'synthetic.cluster-example.us-east-1.rds.amazonaws.com',
+      DB_USER: 'cocjant_api', DB_NAME: 'cocjant', AWS_REGION: 'us-east-1',
+    });
+    send.mockResolvedValue({ SecretString: JSON.stringify({ JWT_ACCESS_SECRET: 'a'.repeat(32), JWT_REFRESH_SECRET: 'b'.repeat(32) }) });
+    await loadCloudSecrets();
+    expect(new URL(process.env.DATABASE_URL!).password).toBe('');
+    expect(process.env.JWT_ACCESS_SECRET).toBe('a'.repeat(32));
+  });
   it.each([
     '{}', 'null', 'secret-not-json',
     JSON.stringify({ DATABASE_URL: url.replace('sslaccept=strict', 'sslaccept=accept_invalid_certs'), JWT_ACCESS_SECRET: 'a', JWT_REFRESH_SECRET: 'b' }),
