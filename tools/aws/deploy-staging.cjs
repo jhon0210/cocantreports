@@ -5,7 +5,10 @@ const { join } = require('node:path')
 
 function command(program, args, options = {}) {
   const result = spawnSync(program, args, { encoding: 'utf8', ...options })
-  if (result.error || result.status !== 0) throw new Error(`Fallo ${program} ${args[0]}; despliegue detenido`)
+  if (result.error || result.status !== 0) {
+    const code = result.stderr?.match(/An error occurred \(([A-Za-z0-9.]+)\)/)?.[1]
+    throw new Error(`Fallo ${program} ${args.slice(0, 2).join(' ')}${code ? ` (${code})` : ''}; despliegue detenido`)
+  }
   return result.stdout?.trim()
 }
 const aws = (...args) => command('aws', [...args, '--no-cli-pager'])
@@ -40,7 +43,8 @@ async function main() {
   const api = env.API_FUNCTION
   const migrator = env.MIGRATION_FUNCTION
   const cleanup = 'cocjant-staging-cleanup'
-  const previous = json('lambda', 'get-alias', '--function-name', api, '--name', 'live')
+  const alias = `${api}:live`
+  const previous = json('lambda', 'get-alias', '--function-name', alias, '--name', 'live')
   aws('lambda', 'update-function-code', '--function-name', migrator, '--image-uri', images.migrate)
   aws('lambda', 'wait', 'function-updated-v2', '--function-name', migrator)
   const directory = mkdtempSync(join(tmpdir(), 'cocjant-deploy-'))

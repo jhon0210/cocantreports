@@ -39,6 +39,10 @@ Parameters:
   GithubOidcProviderArn:
     Type: String
     AllowedPattern: 'arn:aws:iam::[0-9]{12}:oidc-provider/token.actions.githubusercontent.com'
+  GithubOidcSubject:
+    Type: String
+    Default: ''
+    Description: Subject exacto verificado en CloudTrail. Repositorios nuevos incluyen IDs inmutables de propietario y repositorio.
   BudgetEmail: {Type: String, Default: ''}
   MonthlyBudgetUsd:
     Type: Number
@@ -77,6 +81,7 @@ Conditions:
   ProvisionalDomain: !Equals [!Ref UseCustomDomain, 'false']
   Reserved: !Equals [!Ref ReserveConcurrency, 'true']
   HasEmail: !Not [!Equals [!Ref BudgetEmail, '']]
+  HasOidcSubject: !Not [!Equals [!Ref GithubOidcSubject, '']]
   ExpressDatabase: !Equals [!Ref DatabaseMode, express]
 Resources:
   ApiRole:
@@ -544,7 +549,7 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                token.actions.githubusercontent.com:sub: !Sub repo:${GithubRepository}:environment:staging
+                token.actions.githubusercontent.com:sub: !If [HasOidcSubject, !Ref GithubOidcSubject, !Sub 'repo:${GithubRepository}:environment:staging']
       Policies:
         - PolicyName: deploy
           PolicyDocument:
@@ -558,8 +563,11 @@ Resources:
                 Action: [lambda:UpdateFunctionCode, lambda:GetFunctionConfiguration, lambda:GetFunction, lambda:PublishVersion]
                 Resource: [!GetAtt Api.Arn, !GetAtt Migrator.Arn, !GetAtt Cleanup.Arn]
               - Effect: Allow
-                Action: [lambda:GetAlias, lambda:UpdateAlias]
-                Resource: !Sub '${Api.Arn}:live'
+                Action: lambda:GetAlias
+                Resource: [!GetAtt Api.Arn, !Sub '${Api.Arn}:live']
+              - Effect: Allow
+                Action: lambda:UpdateAlias
+                Resource: !GetAtt Api.Arn
               - {Effect: Allow, Action: 'lambda:InvokeFunction', Resource: !GetAtt Migrator.Arn}
               - {Effect: Allow, Action: 'lambda:InvokeFunction', Resource: !Sub '${Api.Arn}:*'}
               - Effect: Allow

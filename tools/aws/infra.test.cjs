@@ -72,6 +72,10 @@ test('CloudFormation conserva datos, secretos separados y limpieza desactivada',
   const deploy = JSON.stringify(app.Resources.DeployRole)
   assert.ok(!deploy.includes('cloudformation:'))
   assert.ok(!deploy.includes('secretsmanager:GetSecretValue'))
+  const subject = app.Resources.DeployRole.Properties.AssumeRolePolicyDocument.Statement[0]
+    .Condition.StringEquals['token.actions.githubusercontent.com:sub']['Fn::If']
+  assert.equal(subject[0], 'HasOidcSubject')
+  assert.deepEqual(subject[1], { Ref: 'GithubOidcSubject' })
 })
 
 async function deploymentScenario(failure) {
@@ -126,6 +130,10 @@ test('CD valida las mismas imagenes antes de publicar y migra antes de cambiar a
   assert.ok(test < push && push < migrate && migrate < alias && alias < html)
   assert.ok(calls.some((call) => call.args.includes('frontend/dist/assets')))
   assert.ok(!calls.some((call) => call.args.includes('--delete')))
+  for (const call of calls.filter((call) => call.args[0] === 'lambda' && ['get-alias', 'update-alias'].includes(call.args[1]))) {
+    assert.ok(call.args.includes(call.args[1] === 'get-alias' ? 'cocjant-staging-api:live' : 'cocjant-staging-api'))
+    assert.ok(call.args.includes('live'))
+  }
 })
 
 test('CD conserva alias y frontend si falla migracion o humo de version', async () => {

@@ -143,6 +143,28 @@ No guardar tokens IAM de BD en secretos, parametros, Git ni logs.
 GitHub publico y CI inicial ya estan operativos; `main` exige el check `validate`
 y el Environment staging exige aprobacion de jhon0210 y permite solo `main`.
 Los cambios posteriores se publican mediante rama/PR, sin desactivar protecciones.
+La PR de Express fue fusionada despues de CI aprobado. El stack application ya
+esta `CREATE_COMPLETE` con CloudFront HTTPS, API/esquema/limpieza sin VPC,
+limpieza diaria desactivada y CORS API/S3 limitado al origen CloudFront real.
+El administrador inicial fue autorizado; su secreto se genera de forma privada,
+sin usar claves del seeder ni publicarlo en logs/chat.
+
+Para OIDC, comprobar el `sub` real en CloudTrail y pasarlo en
+`GithubOidcSubject`: los repositorios GitHub nuevos pueden incluir
+`repo:propietario@ID/repositorio@ID:environment:staging`.
+El formato anterior `repo:propietario/repositorio:environment:staging` fue
+rechazado en esta cuenta. Se exige coincidencia exacta y audience
+`sts.amazonaws.com`; no resolver con comodines ni permitiendo otras ramas.
+Cada reintento de CD puede requerir una nueva aprobacion del Environment.
+El workflow verifica la cuenta STS antes de publicar, ya que el commit fijado
+de configure-aws-credentials no admite el input `allowed-account-ids`.
+
+El token IAM debe codificarse con `encodeURIComponent` antes de asignarlo como
+password de la URL Prisma: una asignacion directa a `URL.password` pierde
+escapes de la firma al decodificar. La prueba de regresion incluye `%2F`.
+Los errores del ejecutor exponen solo codigo Prisma y exit code, no URL,
+token ni salida cruda del subproceso. No reintentar una migracion fallida
+sin revisar `_prisma_migrations`.
 El DNS del equipo local rechazo el endpoint RDS; la validacion real se realiza
 desde AWS, sin modificar DNS, TLS ni exponer usuarios por password.
 El correo de alertas sigue pendiente. La disponibilidad del cluster por si sola
