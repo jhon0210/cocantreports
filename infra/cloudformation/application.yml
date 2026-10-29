@@ -563,8 +563,11 @@ Resources:
                 Action: [lambda:UpdateFunctionCode, lambda:GetFunctionConfiguration, lambda:GetFunction, lambda:PublishVersion]
                 Resource: [!GetAtt Api.Arn, !GetAtt Migrator.Arn, !GetAtt Cleanup.Arn]
               - Effect: Allow
-                Action: [lambda:GetAlias, lambda:UpdateAlias]
-                Resource: !Sub '${Api.Arn}:live'
+                Action: lambda:GetAlias
+                Resource: [!GetAtt Api.Arn, !Sub '${Api.Arn}:live']
+              - Effect: Allow
+                Action: lambda:UpdateAlias
+                Resource: !GetAtt Api.Arn
               - {Effect: Allow, Action: 'lambda:InvokeFunction', Resource: !GetAtt Migrator.Arn}
               - {Effect: Allow, Action: 'lambda:InvokeFunction', Resource: !Sub '${Api.Arn}:*'}
               - Effect: Allow
