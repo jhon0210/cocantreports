@@ -37,7 +37,7 @@ test('API provisional conserva query/cookies y no usa cache ni reescritura SPA',
   assert.equal(behaviors[0], 'ProvisionalDomain')
   const behavior = behaviors[1][0]
   assert.equal(behavior.PathPattern, '/api/*')
-  assert.equal(behavior.CachePolicyId, '413f1600-6f9c-4c8f-a2a5-05bbdb3ca7b2')
+  assert.equal(behavior.CachePolicyId, '4135ea2d-6df8-44a3-9df3-4b5a84be39ad')
   assert.equal(behavior.OriginRequestPolicyId, 'b689b0a8-53d0-40ab-baf2-68738e2966ac')
   const context = {}
   runInNewContext(template.Resources.ApiPathFunction.Properties.FunctionCode, context)

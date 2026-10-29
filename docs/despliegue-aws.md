@@ -104,7 +104,51 @@ Ambos escaneos basicos ECR terminaron `COMPLETE`, sin hallazgos informados; esto
 
 Se resolvio un fallo transitorio DNS de Docker y un fallo del almacen de credenciales Windows usando una configuracion Docker temporal aislada; no se cambiaron DNS ni la configuracion global Docker. La autenticacion temporal se elimino al terminar y los contenedores/redes de prueba se limpiaron. No se crearon Lambda, Aurora, buckets ni roles CD; almacenar contenedores no significa que la aplicacion este desplegada.
 
-### Estado vigente: GitHub autorizado; AWS pendiente de cambio de plan
+### Estado vigente: Aurora Express autorizada en Free plan
+
+El usuario cambio la decision anterior: autorizo **Aurora Express conservando
+Free plan**. Ya se creo `cocjant-staging-express`, disponible con PostgreSQL 17
+(version predeterminada regional), internet access gateway e IAM habilitados,
+backups de 1 dia, proteccion de borrado y rango 0.5-1 ACU. Express usa cifrado
+`sse-rds` administrado por el servicio: no interpretar aisladamente el campo
+historico `StorageEncrypted=false` como ausencia de ese cifrado.
+No se cambia a Paid. Free limita almacenamiento a 1 GB y computo a 4 ACU;
+esta configuracion limita computo a 1 ACU, pero **consume creditos** incluso con
+poco trafico por su minimo 0.5 ACU. No garantiza cubrir todo el periodo gratuito.
+
+La creacion reproducible esta en [New-ExpressCluster.ps1](../tools/aws/New-ExpressCluster.ps1);
+requiere cuenta aprobada y Free activo, no modifica silenciosamente un cluster
+existente distinto. Se utiliza RDS API porque CloudFormation no expone
+`WithExpressConfiguration`. El cluster y su writer quedan fuera de CloudFormation;
+mantener inventario/respaldos y no ejecutar la plantilla foundation privada sobre
+el mismo despliegue. [foundation-express.yml](../infra/cloudformation/foundation-express.yml)
+administra exclusivamente los buckets y secretos recuperados, sin VPC/endpoints.
+
+La aplicacion selecciona `DatabaseMode=express` y recibe `DatabaseHost` y
+`DatabaseResourceId`; cada rol Lambda solo puede `rds-db:connect` como
+`cocjant_api` o `cocjant_migrate`, nunca como `postgres`. No necesita VPC ni NAT.
+Prisma utiliza `@prisma/adapter-pg` con callback de password que firma un token IAM
+en **cada conexion fisica**, TLS con verificacion de certificado y pool maximo1.
+Las conexiones locales/privadas por password conservan el motor anterior.
+Las migraciones firman un token nuevo por invocacion, lo pasan al subproceso solo
+en memoria y mantienen timeout inferior a los 15 minutos de validez del token.
+La CA del gateway es publica (trust store Node), no el bundle privado de RDS.
+
+`database-bootstrap.handler` es una operacion administrativa puntual, sin ruta
+HTTP. Su funcion/rol temporales deben retirarse despues de inicializar la base,
+los usuarios IAM y los privilegios DDL/DML separados. JWT se genera dentro de AWS
+y se almacena en Secrets Manager sin imprimir valores; no se rota si ya existe.
+No guardar tokens IAM de BD en secretos, parametros, Git ni logs.
+
+GitHub publico y CI inicial ya estan operativos; `main` exige el check `validate`
+y el Environment staging exige aprobacion de jhon0210 y permite solo `main`.
+Los cambios posteriores se publican mediante rama/PR, sin desactivar protecciones.
+El DNS del equipo local rechazo el endpoint RDS; la validacion real se realiza
+desde AWS, sin modificar DNS, TLS ni exponer usuarios por password.
+El correo de alertas sigue pendiente. La disponibilidad del cluster por si sola
+no confirma que API/frontend, migraciones y acceso inicial esten completados.
+
+### Historial anterior a la autorizacion Express
 
 Se autorizo publicar el codigo revisado en el repositorio publico indicado. Antes
 del primer commit se excluyen credenciales, configuracion local del asistente,

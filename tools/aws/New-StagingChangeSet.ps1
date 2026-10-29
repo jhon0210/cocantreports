@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('bootstrap', 'foundation', 'application')]
+    [ValidateSet('bootstrap', 'foundation', 'foundation-express', 'application')]
     [string]$Stage,
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[0-9]{12}$')]
@@ -17,6 +17,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $template = Join-Path $root "infra\cloudformation\$Stage.yml"
 $stack = "cocjant-staging-$Stage"
+if ($Stage -eq 'foundation-express') { $stack = 'cocjant-staging-foundation-recovery' }
 $change = "review-$((Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss'))-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
 
 function Invoke-Aws {
