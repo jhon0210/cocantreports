@@ -72,6 +72,10 @@ test('CloudFormation conserva datos, secretos separados y limpieza desactivada',
   const deploy = JSON.stringify(app.Resources.DeployRole)
   assert.ok(!deploy.includes('cloudformation:'))
   assert.ok(!deploy.includes('secretsmanager:GetSecretValue'))
+  const subject = app.Resources.DeployRole.Properties.AssumeRolePolicyDocument.Statement[0]
+    .Condition.StringEquals['token.actions.githubusercontent.com:sub']['Fn::If']
+  assert.equal(subject[0], 'HasOidcSubject')
+  assert.deepEqual(subject[1], { Ref: 'GithubOidcSubject' })
 })
 
 async function deploymentScenario(failure) {
