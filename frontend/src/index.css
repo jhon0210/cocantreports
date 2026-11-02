@@ -4,6 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --tema-hue: 160;
   --radius: 0.625rem;
   --background: oklch(0.985 0.002 247);
   --foreground: oklch(0.21 0.02 255);
@@ -11,24 +12,48 @@
   --card-foreground: oklch(0.21 0.02 255);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.21 0.02 255);
-  /* Verde esmeralda oscuro: contraste >= 4.5:1 con texto blanco (WCAG AA) */
-  --primary: oklch(0.48 0.11 160);
+  /* Color del tema: contraste >= 4.5:1 con texto blanco (WCAG AA) en todos los matices configurables */
+  --primary: oklch(0.48 0.11 var(--tema-hue));
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.96 0.01 160);
-  --secondary-foreground: oklch(0.3 0.06 160);
+  --secondary: oklch(0.96 0.01 var(--tema-hue));
+  --secondary-foreground: oklch(0.3 0.06 var(--tema-hue));
   --muted: oklch(0.96 0.005 250);
   --muted-foreground: oklch(0.47 0.02 255);
-  --accent: oklch(0.94 0.04 160);
-  --accent-foreground: oklch(0.28 0.07 160);
+  --accent: oklch(0.94 0.04 var(--tema-hue));
+  --accent-foreground: oklch(0.28 0.07 var(--tema-hue));
   --destructive: oklch(0.52 0.21 27);
   --border: oklch(0.9 0.008 250);
   --input: oklch(0.82 0.01 250);
-  --ring: oklch(0.55 0.13 160);
-  --sidebar: oklch(0.2 0.03 165);
-  --sidebar-foreground: oklch(0.95 0.01 165);
-  --sidebar-muted: oklch(0.78 0.02 165);
-  --sidebar-accent: oklch(0.3 0.06 160);
-  --sidebar-border: oklch(0.3 0.03 165);
+  --ring: oklch(0.55 0.13 var(--tema-hue));
+  --sidebar: oklch(0.2 0.03 var(--tema-hue));
+  --sidebar-foreground: oklch(0.95 0.01 var(--tema-hue));
+  --sidebar-muted: oklch(0.78 0.02 var(--tema-hue));
+  --sidebar-accent: oklch(0.3 0.06 var(--tema-hue));
+  --sidebar-border: oklch(0.3 0.03 var(--tema-hue));
+}
+
+/* Modo oscuro (noche) */
+.dark {
+  --background: oklch(0.18 0.012 255);
+  --foreground: oklch(0.95 0.005 255);
+  --card: oklch(0.225 0.014 255);
+  --card-foreground: oklch(0.95 0.005 255);
+  --popover: oklch(0.25 0.014 255);
+  --popover-foreground: oklch(0.95 0.005 255);
+  --primary: oklch(0.7 0.13 var(--tema-hue));
+  --primary-foreground: oklch(0.16 0.03 var(--tema-hue));
+  --secondary: oklch(0.3 0.035 var(--tema-hue));
+  --secondary-foreground: oklch(0.93 0.02 var(--tema-hue));
+  --muted: oklch(0.28 0.012 255);
+  --muted-foreground: oklch(0.74 0.015 255);
+  --accent: oklch(0.32 0.05 var(--tema-hue));
+  --accent-foreground: oklch(0.94 0.03 var(--tema-hue));
+  --destructive: oklch(0.68 0.19 27);
+  --border: oklch(0.34 0.012 255);
+  --input: oklch(0.4 0.014 255);
+  --ring: oklch(0.68 0.13 var(--tema-hue));
+  --sidebar: oklch(0.14 0.025 var(--tema-hue));
+  --sidebar-border: oklch(0.26 0.03 var(--tema-hue));
 }
 
 @theme inline {
@@ -96,8 +121,40 @@
   animation: fade-in-up 0.35s ease-out both;
 }
 
+/* Estilo de campos "relleno" (configuración de diseño) */
+html[data-campos='filled'] [data-slot='input'],
+html[data-campos='filled'] [data-slot='select-trigger'] {
+  background-color: var(--muted);
+  border-color: transparent;
+  border-bottom-color: var(--input);
+  border-radius: 0.375rem 0.375rem 0 0;
+}
+
+/* Efecto ripple (configuración de diseño) */
+html[data-ripple='on'] [data-slot='button'] {
+  overflow: hidden;
+}
+
+.efecto-ripple {
+  position: absolute;
+  border-radius: 9999px;
+  background-color: currentColor;
+  opacity: 0.25;
+  pointer-events: none;
+  transform: scale(0);
+  animation: ripple 0.6s ease-out forwards;
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-in {
+  .animate-fade-in,
+  .efecto-ripple {
     animation: none;
   }
 }

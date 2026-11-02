@@ -18,4 +18,6 @@ export const recuperadoresService = {
   },
   getByCedula: async (cedula: string): Promise<Recuperador> =>
     (await api.get<Recuperador>(`/recuperadores/cedula/${encodeURIComponent(cedula)}`)).data,
+  getByCodigo: async (codigo: string): Promise<Recuperador> =>
+    (await api.get<Recuperador>(`/recuperadores/codigo/${encodeURIComponent(codigo)}`)).data,
 }

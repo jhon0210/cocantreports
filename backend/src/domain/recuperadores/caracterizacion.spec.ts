@@ -27,7 +27,8 @@ describe('validarCaracterizacion', () => {
     [{ pertenece_organizacion: true }, 'nombre de la organización'],
     [{ discapacidad: true }, 'tipo de discapacidad'],
     [{ transporte: ['Otro'] }, 'otro medio de transporte'],
-    [{ materiales: ['Otros'] }, 'otros materiales'],
+    [{ firma: 'data:image/jpeg;base64,AAAA' }, 'firma digital'],
+    [{ firma: 'texto' }, 'firma digital'],
     [{ autoriza_datos: false }, 'autorización'],
   ])('rechaza %j', (cambios, mensaje) => {
     expect(() => validarCaracterizacion({ ...base, ...cambios }, hoy, true)).toThrow(ValidationError);
@@ -47,7 +48,7 @@ describe('validarCaracterizacion', () => {
         victima_conflicto: false, ruv: true,
         tipo_documento_otro: 'x',
         transporte: ['Carretilla manual'], transporte_otro: 'x',
-        materiales: ['Vidrio'], materiales_otros: 'x',
+        salud: 'Subsidiado (SISBEN)', eps: 'Nueva EPS',
       },
       hoy,
       true,
@@ -55,8 +56,14 @@ describe('validarCaracterizacion', () => {
     expect(resultado).toEqual({
       ...base,
       pertenece_organizacion: false, discapacidad: false, victima_conflicto: false,
-      transporte: ['Carretilla manual'], materiales: ['Vidrio'],
+      transporte: ['Carretilla manual'], salud: 'Subsidiado (SISBEN)',
     });
+  });
+
+  it('conserva la EPS y la firma cuando corresponden', () => {
+    const firma = 'data:image/png;base64,iVBORw0KGgo=';
+    const resultado = validarCaracterizacion({ ...base, salud: 'Contributivo', eps: 'EPS Sura', firma }, hoy, true);
+    expect(resultado).toMatchObject({ salud: 'Contributivo', eps: 'EPS Sura', firma });
   });
 
   it('conserva las respuestas dependientes cuando la opción está elegida', () => {
@@ -64,7 +71,7 @@ describe('validarCaracterizacion', () => {
       ...base, tipo_documento: 'Otro', tipo_documento_otro: 'Visa',
       pertenece_organizacion: true, organizacion_nombre: 'Coop', organizacion_nit: '900',
       discapacidad: true, discapacidad_tipo: 'Visual', victima_conflicto: true, ruv: true,
-      transporte: ['Otro'], transporte_otro: 'Bicicleta', materiales: ['Otros'], materiales_otros: 'Madera',
+      transporte: ['Otro'], transporte_otro: 'Bicicleta',
     };
     expect(validarCaracterizacion(completa, hoy, true)).toEqual(completa);
   });

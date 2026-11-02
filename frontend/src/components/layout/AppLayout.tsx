@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { usePreferenciasStore } from '@/stores/preferencias.store'
 import { Header } from './Header'
 import { SidebarNav } from './SidebarNav'
 
 export function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const superpuesto = usePreferenciasStore((s) => s.menu) === 'overlay'
 
   return (
     <div className="min-h-screen bg-background">
@@ -16,11 +18,13 @@ export function AppLayout() {
         Saltar al contenido
       </a>
 
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-52 lg:block">
-        <SidebarNav />
-      </aside>
+      {!superpuesto && (
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-52 lg:block">
+          <SidebarNav />
+        </aside>
+      )}
 
-      {/* En móvil el sidebar se convierte en un Sheet */}
+      {/* En móvil, o con menú superpuesto, el sidebar se convierte en un Sheet */}
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
         <SheetContent side="left" className="w-60 gap-0 border-0 bg-sidebar p-0 text-sidebar-foreground [&>button]:text-white">
           <SheetHeader className="sr-only">
@@ -31,8 +35,8 @@ export function AppLayout() {
         </SheetContent>
       </Sheet>
 
-      <div className="lg:pl-52">
-        <Header onOpenMenu={() => setMenuOpen(true)} />
+      <div className={superpuesto ? undefined : 'lg:pl-52'}>
+        <Header onOpenMenu={() => setMenuOpen(true)} menuSiempreVisible={superpuesto} />
         <main id="contenido" tabIndex={-1} className="mx-auto w-full max-w-6xl p-3 outline-none sm:p-4">
           <Outlet />
         </main>

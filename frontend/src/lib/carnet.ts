@@ -1,3 +1,4 @@
+import JsBarcode from 'jsbarcode'
 import logoCocjant from '@/assets/logo-cocjant.png'
 import logoGahia from '@/assets/logo-in-situ-gahia.png'
 import { fullName, initials } from '@/lib/format'
@@ -169,5 +170,67 @@ export async function renderCarnet(r: Recuperador): Promise<HTMLCanvasElement> {
   text(`RH: ${r.caracterizacion?.rh ?? 'No registrado'}`, 1356, 39, GREEN, 880)
   text('-ARRI-', 1435, 47, '#ffffff', 850, 'Impact')
   text('ASOCIACIÓN DE RECICLADORES Y RECUPERADORES INFORMALES', 1480, 32, '#ffffff', 900, 'Arial Narrow', WIDTH / 2, { outline: '#34866b', outlineWidth: 7 })
+  return canvas
+}
+
+/** Código de barras Code 128 sobre canvas; módulos de 6 px para que se lea bien al imprimir a 54 mm. */
+export function renderCodigoBarras(codigo: string): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  JsBarcode(canvas, codigo, { format: 'CODE128', width: 6, height: 300, displayValue: false, margin: 0, background: '#ffffff', lineColor: '#000000' })
+  return canvas
+}
+
+/** Reverso del carnet con el código de barras que se escanea en Crear Reporte; null si el recuperador aún no tiene código. */
+export async function renderCarnetReverso(r: Recuperador): Promise<HTMLCanvasElement | null> {
+  const codigo = r.codigo_registro
+  if (!codigo) return null
+  const [cocjant, gahia] = await Promise.all([loadImage(logoCocjant), loadImage(logoGahia)])
+  const canvas = document.createElement('canvas')
+  canvas.width = WIDTH
+  canvas.height = HEIGHT
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('No se pudo dibujar el carnet')
+  const center = (value: string, y: number, size: number, color: string, weight: 'normal' | 'bold' = 'bold', maxWidth = 860) => {
+    ctx.save()
+    ctx.fillStyle = color
+    ctx.textAlign = 'center'
+    let fitted = size
+    ctx.font = `${weight} ${fitted}px Arial`
+    while (ctx.measureText(value).width > maxWidth && fitted > 10) {
+      fitted--
+      ctx.font = `${weight} ${fitted}px Arial`
+    }
+    ctx.fillText(value, WIDTH / 2, y)
+    ctx.restore()
+  }
+
+  ctx.fillStyle = DARK
+  ctx.fillRect(0, 0, WIDTH, HEIGHT)
+  pattern(ctx, '#0a4a3d')
+  ctx.fillStyle = GOLD
+  ctx.fillRect(0, 0, WIDTH, 26)
+  ctx.fillStyle = GREEN
+  ctx.fillRect(0, HEIGHT - 26, WIDTH, 26)
+
+  ctx.drawImage(emblem(cocjant, 140, 45, 360, 355), 110, 90, 190, 188)
+  ctx.drawImage(emblem(gahia, 145, 45, 355, 490), 740, 70, 160, 220)
+  center('PROYECTO IN SITU GAHIA', 360, 56, '#ffffff')
+  center('CARNET DE OPERARIO RECICLADOR', 430, 40, '#d9e6df', 'normal')
+
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.roundRect(90, 520, 820, 620, 40)
+  ctx.fill()
+  center('CÓDIGO DE REGISTRO', 610, 44, GREEN)
+  const barras = renderCodigoBarras(codigo)
+  const ancho = Math.min(barras.width, 740)
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(barras, 0, 0, barras.width, barras.height, (WIDTH - ancho) / 2, 660, ancho, 300)
+  center(codigo, 1050, 70, '#111111')
+  center('Escanéelo en Crear Reporte para consultar al recuperador', 1100, 28, '#555555', 'normal')
+
+  center(fullName(r.nombre, r.apellido).toUpperCase(), 1260, 44, '#ffffff', 'bold', 900)
+  center('Este carnet es personal e intransferible.', 1330, 30, '#d9e6df', 'normal')
+  center('Si lo encuentra, comuníquese con la Corporación Cívica Juventudes de Antioquia.', 1380, 26, '#d9e6df', 'normal', 900)
   return canvas
 }

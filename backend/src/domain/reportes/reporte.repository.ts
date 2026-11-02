@@ -12,6 +12,8 @@ export interface ReporteFiltro {
   cedula?: string;
   idEca?: number;
   idMat?: number;
+  /** Si es true, solo los registros de rechazo. */
+  soloRechazos?: boolean;
   limit: number;
   offset: number;
 }

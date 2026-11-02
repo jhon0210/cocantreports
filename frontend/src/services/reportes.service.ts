@@ -9,6 +9,7 @@ export interface ReportesConsulta {
   cedula?: string
   id_eca?: number
   id_mat?: number
+  tipo?: 'RECHAZO'
 }
 
 export const reportesService = {

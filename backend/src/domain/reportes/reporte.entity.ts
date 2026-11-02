@@ -37,6 +37,8 @@ export interface Reporte {
   material: ReporteMaterial;
   cantidad: number;
   valor: number;
+  /** Kilogramos rechazados; solo los registros de rechazo lo informan (con cantidad y valor en 0). */
+  rechazoKg: number;
   subtotal: number;
   idUser: number;
   usuario: ReporteUsuario;
@@ -62,6 +64,7 @@ export class NuevoReporte {
     readonly fechaRegistro: Date,
     readonly fechaVenta: Date,
     readonly idEcaMacroruta?: number | null,
+    readonly rechazoKg: number = 0,
   ) {}
 
   static crear(props: {
@@ -74,8 +77,9 @@ export class NuevoReporte {
     fechaRegistro: Date;
     fechaVenta: Date;
     idEcaMacroruta?: number | null;
+    rechazoKg?: number;
   }): NuevoReporte {
-    validarImportesVenta(props.cantidad, props.valor);
+    validarImportesRegistro(props.cantidad, props.valor, props.rechazoKg ?? 0);
     if (props.fechaVenta.getTime() > props.fechaRegistro.getTime()) {
       throw new ValidationError('La fecha de venta no puede ser posterior a la fecha de registro');
     }
@@ -89,11 +93,21 @@ export class NuevoReporte {
       props.fechaRegistro,
       props.fechaVenta,
       props.idEcaMacroruta,
+      props.rechazoKg ?? 0,
     );
   }
 }
 
-export type CambiosReporte = Pick<NuevoReporte, 'idMat' | 'cantidad' | 'valor' | 'idEca' | 'fechaVenta' | 'idEcaMacroruta'>;
+export type CambiosReporte = Pick<NuevoReporte, 'idMat' | 'cantidad' | 'valor' | 'idEca' | 'fechaVenta' | 'idEcaMacroruta' | 'rechazoKg'>;
+
+/** Un rechazo solo informa kilogramos rechazados (cantidad y valor en 0); una venta sigue las reglas de importes. */
+export function validarImportesRegistro(cantidad: number, valor: number, rechazoKg: number): void {
+  if (!Number.isFinite(rechazoKg) || rechazoKg < 0 || rechazoKg > MAX_CANTIDAD_KG) {
+    throw new ValidationError(`El rechazo debe ser mayor o igual que 0 y no superar ${MAX_CANTIDAD_KG} kg`);
+  }
+  if (rechazoKg === 0) return validarImportesVenta(cantidad, valor);
+  if (cantidad !== 0 || valor !== 0) throw new ValidationError('Un registro de rechazo no lleva cantidad vendida ni valor');
+}
 
 export function validarImportesVenta(cantidad: number, valor: number): void {
   if (!Number.isFinite(cantidad) || cantidad < 0 || cantidad > MAX_CANTIDAD_KG) {

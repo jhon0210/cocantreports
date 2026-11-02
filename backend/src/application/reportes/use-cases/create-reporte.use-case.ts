@@ -60,10 +60,12 @@ export class CreateReporteUseCase {
       fechaVenta = parsed;
     }
 
+    const rechazo = dto.tipo === 'RECHAZO';
     return NuevoReporte.crear({
       idMat: dto.id_mat,
-      cantidad: dto.cantidad,
-      valor: dto.valor,
+      cantidad: rechazo ? 0 : dto.cantidad ?? Number.NaN,
+      valor: rechazo ? 0 : dto.valor ?? Number.NaN,
+      rechazoKg: rechazo ? dto.rechazo_kg : 0,
       idUser: actor.id,
       idEca: dto.id_eca,
       idEcaMacroruta: dto.id_eca_macroruta,

@@ -15,10 +15,22 @@ import { BalanceMasasPage } from '@/pages/BalanceMasasPage'
 import { RecuperadorPage } from '@/pages/RecuperadorPage'
 import { UsuariosPage } from '@/pages/UsuariosPage'
 import { bootstrapSession } from '@/services/auth.service'
+import { aplicarPreferencias, crearRipple } from '@/lib/preferencias'
+import { usePreferenciasStore } from '@/stores/preferencias.store'
 
 export default function App() {
   useEffect(() => {
     void bootstrapSession()
+  }, [])
+
+  useEffect(() => {
+    aplicarPreferencias(usePreferenciasStore.getState())
+    const cancelar = usePreferenciasStore.subscribe((estado) => aplicarPreferencias(estado))
+    document.addEventListener('pointerdown', crearRipple)
+    return () => {
+      cancelar()
+      document.removeEventListener('pointerdown', crearRipple)
+    }
   }, [])
 
   return (

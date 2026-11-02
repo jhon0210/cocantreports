@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatCOP, formatDate, formatKg, fullName, todayISO } from '@/lib/format'
 import type { Recuperador } from '@/types/api'
 import type { RegistroVenta } from './ReporteForm'
+import { esRechazo } from './schemas'
 
 export interface RegistroPendiente extends RegistroVenta {
   key: string
@@ -24,16 +25,20 @@ interface RegistrosPendientesProps {
 
 export function RegistrosPendientes({ registros, onEdit, onRemove, onSave, view = 'all' }: RegistrosPendientesProps) {
   const [page, setPage] = useState(1)
-  const { total, cantidad, fechas } = useMemo(() => {
+  const { total, cantidad, rechazo, fechas } = useMemo(() => {
     let total = 0
     let cantidad = 0
+    let rechazo = 0
     const fechas = new Set<string>()
     for (const r of registros) {
-      total += Math.round(r.values.cantidad * r.values.valor)
-      cantidad += r.values.cantidad
+      if (esRechazo(r.values)) rechazo += r.values.rechazo_kg ?? 0
+      else {
+        total += Math.round((r.values.cantidad ?? 0) * (r.values.valor ?? 0))
+        cantidad += r.values.cantidad ?? 0
+      }
       if (r.values.FechaVenta) fechas.add(r.values.FechaVenta)
     }
-    return { total, cantidad, fechas: [...fechas].sort() }
+    return { total, cantidad, rechazo, fechas: [...fechas].sort() }
   }, [registros])
   const fechaVenta = fechas.length > 1
     ? `${formatDate(fechas[0])} – ${formatDate(fechas[fechas.length - 1])}`
@@ -72,9 +77,9 @@ export function RegistrosPendientes({ registros, onEdit, onRemove, onSave, view 
                 <TableCell>{r.values.FechaVenta ? formatDate(r.values.FechaVenta) : '—'}</TableCell>
                 <TableCell>{r.eca.nomEca ?? '—'}</TableCell>
                 <TableCell>{r.material.codigo} · {r.material.nomMaterial}</TableCell>
-                <TableCell className="text-right">{formatKg(r.values.cantidad)}</TableCell>
-                <TableCell className="text-right">{formatCOP(r.values.valor)}</TableCell>
-                <TableCell className="text-right font-semibold">{formatCOP(Math.round(r.values.cantidad * r.values.valor))}</TableCell>
+                <TableCell className="text-right">{esRechazo(r.values) ? <>{formatKg(r.values.rechazo_kg ?? 0)}<span className="block text-xs text-muted-foreground">Rechazo</span></> : formatKg(r.values.cantidad ?? 0)}</TableCell>
+                <TableCell className="text-right">{esRechazo(r.values) ? '—' : formatCOP(r.values.valor ?? 0)}</TableCell>
+                <TableCell className="text-right font-semibold">{formatCOP(esRechazo(r.values) ? 0 : Math.round((r.values.cantidad ?? 0) * (r.values.valor ?? 0)))}</TableCell>
                 {(onEdit || onRemove) && (
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -109,6 +114,7 @@ export function RegistrosPendientes({ registros, onEdit, onRemove, onSave, view 
           {[
             { label: 'Total de registros', description: 'Ventas incluidas en el comprobante', value: registros.length },
             { label: 'Cantidad de material recuperado', description: 'Suma de todos los materiales', value: formatKg(cantidad) },
+            ...(rechazo > 0 ? [{ label: 'Cantidad rechazada', description: 'Suma de los registros de rechazo', value: formatKg(rechazo) }] : []),
             { label: 'Fecha de registro', description: 'Se asigna al guardar el reporte', value: formatDate(todayISO()) },
             { label: 'Fecha de venta', description: fechas.length > 1 ? 'Rango de fechas de las ventas incluidas' : 'Fecha de las ventas incluidas', value: fechaVenta },
             { label: 'Total a pagar', description: 'Valor total del comprobante', value: `${formatCOP(total)} COP` },
@@ -133,6 +139,12 @@ export function RegistrosPendientes({ registros, onEdit, onRemove, onSave, view 
             <dt className="text-muted-foreground">Cantidad de material recuperado</dt>
             <dd className="font-medium tabular-nums">{formatKg(cantidad)}</dd>
           </div>
+          {rechazo > 0 && (
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">Cantidad rechazada</dt>
+              <dd className="font-medium tabular-nums">{formatKg(rechazo)}</dd>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-4 border-t pt-3">
             <dt className="text-muted-foreground">Total a pagar</dt>
             <dd className="font-semibold whitespace-nowrap text-primary tabular-nums">{formatCOP(total)} COP</dd>

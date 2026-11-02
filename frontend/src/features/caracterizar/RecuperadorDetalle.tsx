@@ -53,7 +53,7 @@ function sections(r: Recuperador): Array<[title: string, rows: Row[]]> {
         ['Pertenencia étnica', text(c.pertenencia_etnica)],
         ['Discapacidad', c.discapacidad ? withDetail('Sí', c.discapacidad_tipo) : yesNo(c.discapacidad)],
         ['Víctima del conflicto', c.victima_conflicto ? `Sí · RUV: ${yesNo(c.ruv)}` : yesNo(c.victima_conflicto)],
-        ['Afiliación a salud', text(c.salud)],
+        ['Afiliación a salud', withDetail(c.salud, c.eps)],
         ['Bancarizado', yesNo(r.bancarizado)],
         [
           'Núcleo familiar',
@@ -80,10 +80,9 @@ function sections(r: Recuperador): Array<[title: string, rows: Row[]]> {
         ['Dirección final', text(c.microruta_direccion_final)],
         ['Transporte y herramientas', list(c.transporte, c.transporte_otro, 'Otro')],
         ['Uso de EPP', text(c.epp)],
-        ['Materiales recuperados', list(c.materiales, c.materiales_otros, 'Otros')],
       ],
     ],
-    ['5. Declaración y autorización', [['Autoriza el tratamiento de datos', yesNo(c.autoriza_datos)]]],
+    ['5. Declaración y autorización', [['Autoriza el tratamiento de datos', yesNo(c.autoriza_datos)], ['Firma digital', c.firma ? 'Registrada' : EMPTY]]],
   ]
 }
 
@@ -127,6 +126,12 @@ export function RecuperadorDetalle({ recuperador, onClose }: RecuperadorDetalleP
                   ))}
                 </Section>
               ))}
+              {recuperador.caracterizacion?.firma && (
+                <section>
+                  <h3 className="border-b border-dashed pb-2 text-sm font-semibold">Firma digital</h3>
+                  <img src={recuperador.caracterizacion.firma} alt="Firma digital del recuperador" className="mt-3 h-auto w-full max-w-xs rounded-md border bg-white" />
+                </section>
+              )}
             </div>
           </>
         )}

@@ -29,7 +29,7 @@ describe('Recuperadores: formato de caracterización (HTTP + BD, datos propios)'
     estrato: '2', telefono: '3001234567', discapacidad: false, victima_conflicto: true, ruv: true,
     dependientes_total: 3, dependientes_menores: 2, experiencia_anios: 12, jornada: 'Mixta',
     transporte: ['Carretilla manual', 'Otro'], transporte_otro: 'Bicicleta', epp: 'A veces',
-    materiales: ['Vidrio', 'Otros'], materiales_otros: 'Madera', autoriza_datos: true,
+    salud: 'Contributivo', eps: 'EPS Sura', firma: 'data:image/png;base64,iVBORw0KGgo=', autoriza_datos: true,
   };
 
   beforeAll(async () => {
@@ -61,9 +61,10 @@ describe('Recuperadores: formato de caracterización (HTTP + BD, datos propios)'
 
   const post = (role: string, body: object) => http().post('/recuperadores').auth(tokens[role], { type: 'bearer' }).send(body);
 
-  it('guarda y devuelve la caracterización completa y el código único', async () => {
-    const created = await post('coord', { nombre: 'Ana', apellido: suffix, cedula: nuevaCedula(), bancarizado: true, codigo_registro: `REC-${suffix}`, caracterizacion: completa }).expect(201);
-    expect(created.body).toMatchObject({ codigo_registro: `REC-${suffix}`, caracterizacion: completa });
+  it('guarda y devuelve la caracterización completa y un código único automático', async () => {
+    const created = await post('coord', { nombre: 'Ana', apellido: suffix, cedula: nuevaCedula(), bancarizado: true, caracterizacion: completa }).expect(201);
+    expect(created.body).toMatchObject({ caracterizacion: completa });
+    expect(created.body.codigo_registro).toMatch(/^\d{8}$/);
     const detail = await http().get(`/recuperadores/${created.body.id_recuperador}`).auth(tokens.admin, { type: 'bearer' }).expect(200);
     expect(detail.body.caracterizacion).toEqual(completa);
     const list = await http().get('/recuperadores').auth(tokens.admin, { type: 'bearer' }).expect(200);
@@ -82,24 +83,26 @@ describe('Recuperadores: formato de caracterización (HTTP + BD, datos propios)'
       { ...completa, dependientes_total: -1 },
       { ...completa, campo_extra: 'x' },
       { ...completa, autoriza_datos: false },
+      { ...completa, eps: 'Inventada' },
+      { ...completa, firma: 'data:image/jpeg;base64,AAAA' },
     ];
     for (const caracterizacion of invalidos) await post('admin', { ...base, cedula, caracterizacion }).expect(400);
-    await post('admin', { ...base, cedula, codigo_registro: 'con espacios', caracterizacion: completa }).expect(400);
+    await post('admin', { ...base, cedula, codigo_registro: 'REC-1', caracterizacion: completa }).expect(400);
     expect(await prisma.recuperador.count({ where: { cedula } })).toBe(0);
 
-    await post('admin', { ...base, cedula, codigo_registro: `DUP-${suffix}`, caracterizacion: completa }).expect(201);
-    await post('admin', { ...base, cedula: nuevaCedula(), codigo_registro: `DUP-${suffix}`, caracterizacion: completa }).expect(409);
+    await post('admin', { ...base, cedula, caracterizacion: completa }).expect(201);
     await post('oper', { ...base, cedula: nuevaCedula(), caracterizacion: completa }).expect(403);
   });
 
-  it('edita reemplazando la caracterización, limpia dependientes y permite quitar el código', async () => {
+  it('edita reemplazando la caracterización, limpia dependientes y conserva el código automático', async () => {
     const cedula = nuevaCedula();
-    const created = await post('admin', { nombre: 'Eva', apellido: suffix, cedula, bancarizado: false, codigo_registro: `EDT-${suffix}`, caracterizacion: completa }).expect(201);
+    const created = await post('admin', { nombre: 'Eva', apellido: suffix, cedula, bancarizado: false, caracterizacion: completa }).expect(201);
     const url = `/recuperadores/${created.body.id_recuperador}`;
-    const cambios = { ...completa, pertenece_organizacion: false, autoriza_datos: false };
-    const updated = await http().patch(url).auth(tokens.coord, { type: 'bearer' }).send({ codigo_registro: null, caracterizacion: cambios }).expect(200);
-    expect(updated.body.codigo_registro).toBeNull();
+    const cambios = { ...completa, pertenece_organizacion: false, autoriza_datos: false, salud: 'Subsidiado (SISBEN)' };
+    const updated = await http().patch(url).auth(tokens.coord, { type: 'bearer' }).send({ caracterizacion: cambios }).expect(200);
+    expect(updated.body.codigo_registro).toBe(created.body.codigo_registro);
     expect(updated.body.caracterizacion).not.toHaveProperty('organizacion_nombre');
+    expect(updated.body.caracterizacion).not.toHaveProperty('eps');
     expect(updated.body.caracterizacion).toMatchObject({ pertenece_organizacion: false, autoriza_datos: false, lugar: 'Medellín, Antioquia' });
     await http().patch(url).auth(tokens.coord, { type: 'bearer' }).send({ caracterizacion: null }).expect(400);
     await http().patch(url).auth(tokens.oper, { type: 'bearer' }).send({ nombre: 'X' }).expect(403);
@@ -107,8 +110,18 @@ describe('Recuperadores: formato de caracterización (HTTP + BD, datos propios)'
     expect(sinCambios.body.caracterizacion).toEqual(updated.body.caracterizacion);
   });
 
+  it('consulta al recuperador por el código del código de barras del carnet', async () => {
+    const created = await post('admin', { nombre: 'Barras', apellido: suffix, cedula: nuevaCedula(), bancarizado: false }).expect(201);
+    const codigo = created.body.codigo_registro as string;
+    const found = await http().get(`/recuperadores/codigo/${codigo}`).auth(tokens.oper, { type: 'bearer' }).expect(200);
+    expect(found.body.id_recuperador).toBe(created.body.id_recuperador);
+    await http().get('/recuperadores/codigo/NO-EXISTE-1').auth(tokens.oper, { type: 'bearer' }).expect(404);
+    await http().get('/recuperadores/codigo/con%20espacios').auth(tokens.oper, { type: 'bearer' }).expect(400);
+  });
+
   it('los recuperadores sin formato siguen funcionando', async () => {
     const created = await post('admin', { nombre: 'Sin', apellido: suffix, cedula: nuevaCedula(), bancarizado: false }).expect(201);
-    expect(created.body).toMatchObject({ caracterizacion: null, codigo_registro: null });
+    expect(created.body.caracterizacion).toBeNull();
+    expect(created.body.codigo_registro).toMatch(/^\d{8}$/);
   });
 });

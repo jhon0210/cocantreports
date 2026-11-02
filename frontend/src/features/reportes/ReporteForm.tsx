@@ -11,6 +11,7 @@ import { QueryState } from '@/components/common/QueryState'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useQuery } from '@/hooks/useQuery'
 import { getErrorMessage } from '@/lib/errors'
 import { todayISO } from '@/lib/format'
@@ -47,10 +48,11 @@ export function ReporteForm({ initialValues, ecaId = '', macrorutaId = '', onSub
     handleSubmit,
     reset,
     setValue,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<ReporteValues>({
     resolver: zodResolver(reporteSchema),
-    defaultValues: initialValues ?? { id_mat: '', id_eca: ecaId, cantidad: undefined, valor: undefined, FechaVenta: '' },
+    defaultValues: initialValues ?? { tipo: 'VENTA', id_mat: '', id_eca: ecaId, cantidad: undefined, valor: undefined, FechaVenta: '' },
   })
 
   useEffect(() => {
@@ -61,7 +63,17 @@ export function ReporteForm({ initialValues, ecaId = '', macrorutaId = '', onSub
   }, [creating, ecaId, macrorutaId, setValue])
 
   const idMat = useWatch({ control, name: 'id_mat' })
+  const tipo = useWatch({ control, name: 'tipo' })
+  const rechazo = tipo === 'RECHAZO'
   const material = materiales.data?.find((m) => String(m.id_mat) === idMat)
+
+  const cambiarTipo = (nuevo: string) => {
+    setValue('tipo', nuevo === 'RECHAZO' ? 'RECHAZO' : 'VENTA')
+    setValue('cantidad', undefined)
+    setValue('valor', undefined)
+    setValue('rechazo_kg', undefined)
+    clearErrors(['cantidad', 'valor', 'rechazo_kg'])
+  }
 
   const onSubmit = async (values: ReporteValues) => {
     try {
@@ -79,7 +91,7 @@ export function ReporteForm({ initialValues, ecaId = '', macrorutaId = '', onSub
         material,
         eca,
       })
-      if (creating) reset({ id_mat: '', id_eca: values.id_eca, id_eca_macroruta: macrorutaId, cantidad: undefined, valor: undefined, FechaVenta: '' })
+      if (creating) reset({ tipo: values.tipo ?? 'VENTA', id_mat: '', id_eca: values.id_eca, id_eca_macroruta: macrorutaId, cantidad: undefined, valor: undefined, rechazo_kg: undefined, FechaVenta: '' })
     } catch (error) {
       toast.error(getErrorMessage(error, 'No se pudo guardar el registro'))
     }
@@ -98,8 +110,16 @@ export function ReporteForm({ initialValues, ecaId = '', macrorutaId = '', onSub
           emptyTitle="Faltan materiales o ECAs configurados"
           rows={2}
         >
-          <form onSubmit={handleSubmit(onSubmit)} noValidate aria-label={initialValues ? 'Editar registro de venta' : 'Registrar venta'}>
-            <FormSection title={initialValues ? 'Editar registro de venta' : 'Registrar venta'}>
+          <form onSubmit={handleSubmit(onSubmit)} noValidate aria-label={initialValues ? 'Editar registro de venta' : rechazo ? 'Registrar rechazo' : 'Registrar venta'}>
+            <FormSection title={initialValues ? (rechazo ? 'Editar registro de rechazo' : 'Editar registro de venta') : rechazo ? 'Registrar rechazo' : 'Registrar venta'}>
+            {creating && (
+              <Tabs value={rechazo ? 'RECHAZO' : 'VENTA'} onValueChange={cambiarTipo}>
+                <TabsList aria-label="Tipo de registro">
+                  <TabsTrigger value="VENTA">Registrar Venta</TabsTrigger>
+                  <TabsTrigger value="RECHAZO">Registrar Rechazo</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
             <FormRow
               className="py-2 md:grid-cols-1 md:gap-2"
               id="id_mat"
@@ -200,6 +220,22 @@ export function ReporteForm({ initialValues, ecaId = '', macrorutaId = '', onSub
                   </FormRow>
                 )}
 
+                {rechazo ? (
+                  <FormRow className="py-2 md:grid-cols-[11rem_1fr] md:gap-4" id="rechazo_kg" htmlFor="rechazo_kg" label="Cantidad rechazada (kg)" error={errors.rechazo_kg?.message} required>
+                    <Input
+                      id="rechazo_kg"
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      min="0"
+                      placeholder="0"
+                      aria-invalid={!!errors.rechazo_kg}
+                      aria-describedby={describedBy('rechazo_kg', errors.rechazo_kg?.message)}
+                      {...register('rechazo_kg', { valueAsNumber: true })}
+                    />
+                  </FormRow>
+                ) : (
+                <>
                 <FormRow className="py-2 md:grid-cols-[11rem_1fr] md:gap-4" id="cantidad" htmlFor="cantidad" label="Cantidad vendida (kg)" error={errors.cantidad?.message} required>
                   <Input
                     id="cantidad"
@@ -232,6 +268,8 @@ export function ReporteForm({ initialValues, ecaId = '', macrorutaId = '', onSub
                     )}
                   />
                 </FormRow>
+                </>
+                )}
               </>
             )}
             </FormSection>

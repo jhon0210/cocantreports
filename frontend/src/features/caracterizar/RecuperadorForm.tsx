@@ -9,6 +9,7 @@ import { describedBy } from '@/components/common/Field'
 import { FormRow, FormSection } from '@/components/common/FormSection'
 import { GradientFrame } from '@/components/common/GradientFrame'
 import { QueryState } from '@/components/common/QueryState'
+import { SignaturePad } from '@/components/common/SignaturePad'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -22,13 +23,14 @@ import type { Recuperador, UpdateRecuperadorInput } from '@/types/api'
 import { calcularEdad, emptyValues, toInput, toValues } from './caracterizacion'
 import {
   AFILIACIONES_SALUD,
+  COMUNAS_VALLE_ABURRA,
+  EPS_ANTIOQUIA,
   ESTADOS_CIVILES,
   ESTRATOS,
   GENEROS,
   GRUPOS_RH,
   JORNADAS,
   LUGARES_RECOLECCION,
-  MATERIALES_RECUPERADOS,
   NIVELES_EDUCATIVOS,
   PERTENENCIAS_ETNICAS,
   TIPOS_DOCUMENTO,
@@ -107,10 +109,12 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
     setPaso(0)
   }, [recuperador, reset])
 
-  const [pertenece, tipoDocumento, nacimiento, discapacidad, victima, transporte, materiales] = useWatch({
+  const [pertenece, tipoDocumento, nacimiento, discapacidad, victima, transporte, salud, comuna] = useWatch({
     control,
-    name: ['pertenece_organizacion', 'tipo_documento', 'fecha_nacimiento', 'discapacidad', 'victima_conflicto', 'transporte', 'materiales'],
+    name: ['pertenece_organizacion', 'tipo_documento', 'fecha_nacimiento', 'discapacidad', 'victima_conflicto', 'transporte', 'salud', 'comuna'],
   })
+  // Un valor libre registrado antes de la lista se conserva como opción para no perderlo al editar.
+  const comunas = comuna && !(COMUNAS_VALLE_ABURRA as readonly string[]).includes(comuna) ? [comuna, ...COMUNAS_VALLE_ABURRA] : COMUNAS_VALLE_ABURRA
   const edad = calcularEdad(nacimiento)
 
   const onSubmit = async (v: RecuperadorValues) => {
@@ -141,14 +145,8 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
       }
     } catch (error) {
       if (getErrorStatus(error) === 409) {
-        const message = getErrorMessage(error, '')
-        if (message.includes('código')) {
-          setPaso(0)
-          setError('codigo_registro', { message: 'Este código de registro ya existe' })
-        } else {
-          setPaso(1)
-          setError('cedula', { message: 'Ya existe un recuperador con este número de documento' })
-        }
+        setPaso(1)
+        setError('cedula', { message: 'Ya existe un recuperador con este número de documento' })
       }
       toast.error(getErrorMessage(error, editing ? 'No se pudo actualizar el recuperador' : 'No se pudo registrar el recuperador'))
     }
@@ -277,7 +275,6 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
           <FormSection title="1. Información general del registro">
             {textRow('fecha_inscripcion', 'Fecha de inscripción', { type: 'date', max: todayISO(), required: true })}
             {textRow('lugar', 'Lugar', { description: 'Municipio y departamento' })}
-            {textRow('codigo_registro', 'Código único de registro', { description: 'ID asignado al registro (opcional)' })}
             <FormRow id="id_estado" htmlFor="id_estado" label="Estado" description="Solo los activos registran ventas" error={message('id_estado')} required>
               <Controller
                 control={control}
@@ -350,7 +347,7 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
             {selectRow('rh', 'Grupo sanguíneo / RH', GRUPOS_RH)}
             {textRow('direccion', 'Dirección de residencia', { description: 'Dirección actual' })}
             {textRow('barrio', 'Barrio', { description: 'Barrio o vereda' })}
-            {textRow('comuna', 'Comuna', { description: 'Comuna o localidad' })}
+            {selectRow('comuna', 'Comuna', comunas, { description: 'Comunas y corregimientos del Valle de Aburrá' })}
             {selectRow('estrato', 'Estrato socioeconómico', ESTRATOS)}
             {textRow('telefono', 'Teléfono / Celular', { description: 'Contacto', type: 'tel', inputMode: 'tel' })}
           </FormSection>
@@ -365,6 +362,7 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
             {switchRow('victima_conflicto', 'Víctima del conflicto armado', 'Población víctima del conflicto armado')}
             {victima && switchRow('ruv', 'Registro RUV', '¿Cuenta con registro en el RUV?')}
             {selectRow('salud', 'Afiliación a salud', AFILIACIONES_SALUD, { description: 'Sistema General de Seguridad Social en Salud' })}
+            {salud === 'Contributivo' && selectRow('eps', 'EPS', EPS_ANTIOQUIA, { description: 'EPS con presencia en Antioquia' })}
             {switchRow('bancarizado', 'Bancarizado', '¿Tiene cuenta bancaria?')}
             <FormRow
               id="dependientes"
@@ -397,8 +395,6 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
             {transporte.includes('Otro') && textRow('transporte_otro', 'Otro medio de transporte', { required: true })}
             {textRow('placa_habitual', 'Placa habitual (opcional)', { description: 'Solo si el vehículo tiene placa. No completa la placa de ingresos históricos.' })}
             {selectRow('epp', 'Uso de elementos de protección (EPP)', USOS_EPP, { description: 'Guantes, botas, tapabocas, overol' })}
-            {checkboxRow('materiales', 'Materiales principalmente recuperados', MATERIALES_RECUPERADOS, 'Selecciona todos los que recupere')}
-            {materiales.includes('Otros') && textRow('materiales_otros', 'Otros materiales', { required: true })}
           </FormSection>
           </div>
           </div>
@@ -425,6 +421,13 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
                 />
                 Declaro que la información es verídica y autorizo el tratamiento de mis datos personales.
               </label>
+            </FormRow>
+            <FormRow id="firma" label="Firma digital"             description="El recuperador firma con la tableta de firma conectada (dispositivo externo)" error={message('firma')}>
+              <Controller
+                control={control}
+                name="firma"
+                render={({ field }) => <SignaturePad id="firma" value={field.value} onChange={field.onChange} disabled={isSubmitting} describedBy="firma-label" />}
+              />
             </FormRow>
           </FormSection>
           </div>

@@ -11,7 +11,6 @@ export const emptyValues = (): RecuperadorValues => ({
   id_estado: ACTIVO_ID,
   bancarizado: false,
   foto: '',
-  codigo_registro: '',
   fecha_inscripcion: todayISO(),
   lugar: '',
   pertenece_organizacion: false,
@@ -35,6 +34,7 @@ export const emptyValues = (): RecuperadorValues => ({
   victima_conflicto: false,
   ruv: false,
   salud: '',
+  eps: '',
   dependientes_total: '',
   dependientes_menores: '',
   dependientes_adultos_mayores: '',
@@ -49,9 +49,8 @@ export const emptyValues = (): RecuperadorValues => ({
   transporte_otro: '',
   placa_habitual: '',
   epp: '',
-  materiales: [],
-  materiales_otros: '',
   autoriza_datos: false,
+  firma: '',
 })
 
 const num = (v: number | undefined): string => (v === undefined ? '' : String(v))
@@ -65,7 +64,6 @@ export function toValues(r: Recuperador): RecuperadorValues {
     id_estado: String(r.id_estado),
     bancarizado: r.bancarizado,
     foto: r.foto ?? '',
-    codigo_registro: r.codigo_registro ?? '',
     // Los recuperadores anteriores al formato conservan su fecha de registro como fecha de inscripción.
     fecha_inscripcion: c.fecha_inscripcion ?? r.FechaRegistro,
     lugar: c.lugar ?? '',
@@ -90,6 +88,7 @@ export function toValues(r: Recuperador): RecuperadorValues {
     victima_conflicto: c.victima_conflicto ?? false,
     ruv: c.ruv ?? false,
     salud: c.salud ?? '',
+    eps: c.eps ?? '',
     dependientes_total: num(c.dependientes_total),
     dependientes_menores: num(c.dependientes_menores),
     dependientes_adultos_mayores: num(c.dependientes_adultos_mayores),
@@ -104,9 +103,8 @@ export function toValues(r: Recuperador): RecuperadorValues {
     transporte_otro: c.transporte_otro ?? '',
     placa_habitual: c.placa_habitual ?? '',
     epp: c.epp ?? '',
-    materiales: c.materiales ?? [],
-    materiales_otros: c.materiales_otros ?? '',
     autoriza_datos: c.autoriza_datos ?? false,
+    firma: c.firma ?? '',
   }
 }
 
@@ -139,6 +137,7 @@ export function toCaracterizacion(v: RecuperadorValues): Caracterizacion {
     victima_conflicto: v.victima_conflicto,
     ruv: v.victima_conflicto ? v.ruv : undefined,
     salud: optional(v.salud),
+    eps: v.salud === 'Contributivo' ? optional(v.eps) : undefined,
     dependientes_total: optionalNumber(v.dependientes_total),
     dependientes_menores: optionalNumber(v.dependientes_menores),
     dependientes_adultos_mayores: optionalNumber(v.dependientes_adultos_mayores),
@@ -153,9 +152,8 @@ export function toCaracterizacion(v: RecuperadorValues): Caracterizacion {
     transporte_otro: v.transporte.includes('Otro') ? optional(v.transporte_otro) : undefined,
     placa_habitual: optional(v.placa_habitual)?.toUpperCase(),
     epp: optional(v.epp),
-    materiales: v.materiales.length ? v.materiales : undefined,
-    materiales_otros: v.materiales.includes('Otros') ? optional(v.materiales_otros) : undefined,
     autoriza_datos: v.autoriza_datos,
+    firma: optional(v.firma),
   }
 }
 
@@ -166,7 +164,6 @@ export const toInput = (v: RecuperadorValues): CreateRecuperadorInput => ({
   id_estado: Number(v.id_estado),
   bancarizado: v.bancarizado,
   foto: v.foto,
-  codigo_registro: optional(v.codigo_registro) ?? null,
   caracterizacion: toCaracterizacion(v),
 })
 

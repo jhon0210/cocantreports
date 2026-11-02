@@ -34,6 +34,7 @@ function build(overrides: { recuperador?: Recuperador | null; material?: boolean
         material: { codigo: 101, nombre: 'Cartón' },
         cantidad: n.cantidad,
         valor: n.valor,
+        rechazoKg: n.rechazoKg,
         subtotal: calcularSubtotal(n.cantidad, n.valor),
         idUser: n.idUser,
         usuario: { nombre: 'Olga', apellido: 'Op', usuario: 'operario1' },
@@ -134,6 +135,21 @@ describe('CreateReporteUseCase', () => {
     await expect(useCase.execute(actor, { ...dto, cantidad: -1 })).rejects.toBeInstanceOf(ValidationError);
     await expect(useCase.execute(actor, { ...dto, valor: -5 })).rejects.toBeInstanceOf(ValidationError);
     await expect(useCase.execute(actor, { ...dto, valor: 10.5 })).rejects.toBeInstanceOf(ValidationError);
+  });
+  it('registra un rechazo solo con kilogramos rechazados, sin cantidad ni valor', async () => {
+    const { useCase, creados } = build();
+    const res = await useCase.execute(actor, { id_recuperador: 10, id_mat: 2, id_eca: 4, tipo: 'RECHAZO', rechazo_kg: 3.5 });
+    expect(creados[0]).toMatchObject({ cantidad: 0, valor: 0, rechazoKg: 3.5 });
+    expect(res).toMatchObject({ tipo: 'RECHAZO', rechazo_kg: 3.5, cantidad: 0, subtotal: 0 });
+    await expect(useCase.execute(actor, { id_recuperador: 10, id_mat: 2, id_eca: 4, tipo: 'RECHAZO', rechazo_kg: 0 })).rejects.toBeInstanceOf(ValidationError);
+    await expect(useCase.execute(actor, { id_recuperador: 10, id_mat: 2, id_eca: 4, tipo: 'RECHAZO' })).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it('una venta nunca arrastra rechazo y exige cantidad y valor', async () => {
+    const { useCase, creados } = build();
+    await useCase.execute(actor, { ...dto, rechazo_kg: 9 });
+    expect(creados[0].rechazoKg).toBe(0);
+    await expect(useCase.execute(actor, { id_recuperador: 10, id_mat: 2, id_eca: 4 })).rejects.toBeInstanceOf(ValidationError);
   });
 });
 

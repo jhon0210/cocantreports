@@ -14,7 +14,7 @@ import { CarnetRecuperador } from '@/features/reportes/CarnetRecuperador'
 import { RegistrosPendientes, type RegistroPendiente } from '@/features/reportes/RegistrosPendientes'
 import { ReporteForm, type RegistroVenta } from '@/features/reportes/ReporteForm'
 import { ReportesTable } from '@/features/reportes/ReportesTable'
-import type { ReporteValues } from '@/features/reportes/schemas'
+import { esRechazo, type ReporteValues } from '@/features/reportes/schemas'
 import { useQuery } from '@/hooks/useQuery'
 import { makeComprobantePdf } from '@/lib/pdf-lazy'
 import { getErrorMessage } from '@/lib/errors'
@@ -32,20 +32,21 @@ interface PdfState {
 }
 
 const toInput = (v: ReporteValues): UpdateReporteInput => ({
+  ...(esRechazo(v)
+    ? { tipo: 'RECHAZO' as const, rechazo_kg: v.rechazo_kg }
+    : { cantidad: v.cantidad, valor: v.valor }),
   id_eca_macroruta: v.id_eca_macroruta ? Number(v.id_eca_macroruta) : null,
   id_mat: Number(v.id_mat),
   id_eca: Number(v.id_eca),
-  cantidad: v.cantidad,
-  valor: v.valor,
   FechaVenta: v.FechaVenta || undefined,
 })
 
 const toValues = (r: Reporte): ReporteValues => ({
+  tipo: r.tipo === 'RECHAZO' ? 'RECHAZO' : 'VENTA',
   id_eca_macroruta: r.id_eca_macroruta ? String(r.id_eca_macroruta) : '',
   id_mat: String(r.id_mat),
   id_eca: String(r.id_eca),
-  cantidad: r.cantidad,
-  valor: r.valor,
+  ...(r.tipo === 'RECHAZO' ? { rechazo_kg: r.rechazo_kg } : { cantidad: r.cantidad, valor: r.valor }),
   FechaVenta: r.FechaVenta,
 })
 

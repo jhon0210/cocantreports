@@ -32,15 +32,24 @@ export const LUGARES_RECOLECCION = [
 ] as const;
 export const TRANSPORTES = ['A pie / Costal o bulto', 'Carretilla manual', 'Motocarro', 'Vehículo automotor', 'Otro'] as const;
 export const USOS_EPP = ['Siempre', 'A veces', 'Nunca'] as const;
-export const MATERIALES_RECUPERADOS = [
-  'Papel y Cartón',
-  'Plástico (PET, PEAD, PEBD, PVC, etc.)',
-  'Vidrio',
-  'Metales (Hierro, cobre, aluminio, bronce, acero)',
-  'Multicapas / Envases tipo Tetrapak',
-  'RAEE (Residuos de Aparatos Eléctricos y Electrónicos)',
-  'Otros',
+/** EPS con afiliados del régimen contributivo en Antioquia. */
+export const EPS_ANTIOQUIA = [
+  'Nueva EPS',
+  'EPS Sura',
+  'EPS Sanitas',
+  'Salud Total',
+  'Coosalud',
+  'Famisanar',
+  'Savia Salud',
+  'Compensar',
+  'Aliansalud',
+  'Mutual SER',
+  'Asmet Salud',
+  'Otra',
 ] as const;
+export const FIRMA_REGEX = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/;
+/** Una firma manuscrita en PNG ocupa pocos KB; el tope evita guardar imágenes arbitrarias. */
+export const FIRMA_MAX_LENGTH = 300_000;
 
 /** Respuestas del formato de inscripción y caracterización. Los campos dependientes solo existen si su condición se cumple. */
 export interface Caracterizacion {
@@ -67,6 +76,7 @@ export interface Caracterizacion {
   victima_conflicto?: boolean;
   ruv?: boolean;
   salud?: string;
+  eps?: string;
   dependientes_total?: number;
   dependientes_menores?: number;
   dependientes_adultos_mayores?: number;
@@ -81,9 +91,9 @@ export interface Caracterizacion {
   transporte_otro?: string;
   placa_habitual?: string;
   epp?: string;
-  materiales?: string[];
-  materiales_otros?: string;
   autoriza_datos?: boolean;
+  /** Firma digital manuscrita como PNG en data URL. */
+  firma?: string;
 }
 
 const MAX_EDAD = 120;
@@ -139,9 +149,11 @@ export function validarCaracterizacion(entrada: Caracterizacion, hoy: Date, exig
     if (!c.transporte_otro) throw new ValidationError('Especifica el otro medio de transporte');
   } else delete c.transporte_otro;
 
-  if (c.materiales?.includes('Otros')) {
-    if (!c.materiales_otros) throw new ValidationError('Especifica los otros materiales recuperados');
-  } else delete c.materiales_otros;
+  if (c.salud !== 'Contributivo') delete c.eps;
+
+  if (c.firma !== undefined && (typeof c.firma !== 'string' || c.firma.length > FIRMA_MAX_LENGTH || !FIRMA_REGEX.test(c.firma))) {
+    throw new ValidationError('La firma digital no es una imagen PNG válida');
+  }
 
   if (exigirAutorizacion && c.autoriza_datos !== true) {
     throw new ValidationError('Se requiere la declaración y autorización de tratamiento de datos personales');
