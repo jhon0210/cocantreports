@@ -28,10 +28,10 @@ describe('caracterización del recuperador', () => {
   it('exige los campos dependientes de la opción elegida', () => {
     const v = {
       ...rellenar(), tipo_documento: 'Otro', pertenece_organizacion: true, discapacidad: true,
-      transporte: ['Otro'], materiales: ['Otros'], fecha_nacimiento: '2999-01-01',
+      transporte: ['Otro'], fecha_nacimiento: '2999-01-01',
     }
     expect(mensajes(recuperadorSchema.safeParse(v)).map((m) => m.split(':')[0]).sort()).toEqual([
-      'discapacidad_tipo', 'fecha_nacimiento', 'materiales_otros', 'organizacion_nombre', 'tipo_documento_otro', 'transporte_otro',
+      'discapacidad_tipo', 'fecha_nacimiento', 'organizacion_nombre', 'tipo_documento_otro', 'transporte_otro',
     ])
   })
 
@@ -48,14 +48,21 @@ describe('caracterización del recuperador', () => {
 
   it('omite lo vacío y lo dependiente de una opción apagada al enviar', () => {
     const c = toCaracterizacion({
-      ...rellenar(), organizacion_nombre: 'Coop', discapacidad_tipo: 'Visual', ruv: true, transporte_otro: 'x', materiales_otros: 'y',
+      ...rellenar(), organizacion_nombre: 'Coop', discapacidad_tipo: 'Visual', ruv: true, transporte_otro: 'x', eps: 'EPS Sura',
       dependientes_total: '3', dependientes_menores: '0', experiencia_anios: '',
     })
     expect(c).toMatchObject({ pertenece_organizacion: false, discapacidad: false, victima_conflicto: false, dependientes_total: 3, dependientes_menores: 0, autoriza_datos: true })
-    for (const clave of ['organizacion_nombre', 'discapacidad_tipo', 'ruv', 'transporte_otro', 'materiales_otros', 'experiencia_anios', 'lugar', 'transporte']) {
+    for (const clave of ['organizacion_nombre', 'discapacidad_tipo', 'ruv', 'transporte_otro', 'eps', 'firma', 'experiencia_anios', 'lugar', 'transporte']) {
       expect(c).not.toHaveProperty(clave, expect.anything())
     }
-    expect(toInput({ ...rellenar(), codigo_registro: '  ' }).codigo_registro).toBeNull()
+    expect(toInput(rellenar())).not.toHaveProperty('codigo_registro')
+  })
+
+  it('envía la EPS solo con afiliación contributiva y conserva la firma digital', () => {
+    const firma = 'data:image/png;base64,iVBORw0KGgo='
+    expect(toCaracterizacion({ ...rellenar(), salud: 'Contributivo', eps: 'Nueva EPS', firma })).toMatchObject({ salud: 'Contributivo', eps: 'Nueva EPS', firma })
+    expect(toCaracterizacion({ ...rellenar(), salud: 'Subsidiado (SISBEN)', eps: 'Nueva EPS' }).eps).toBeUndefined()
+    expect(recuperadorSchema.safeParse({ ...rellenar(), salud: 'Contributivo', eps: 'Inventada' }).success).toBe(false)
   })
 
   it('un recuperador anterior al formato se edita con su fecha de registro y sin datos inventados', () => {

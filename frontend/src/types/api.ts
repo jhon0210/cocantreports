@@ -98,6 +98,7 @@ export interface Caracterizacion {
   victima_conflicto?: boolean
   ruv?: boolean
   salud?: string
+  eps?: string
   dependientes_total?: number
   dependientes_menores?: number
   dependientes_adultos_mayores?: number
@@ -112,9 +113,9 @@ export interface Caracterizacion {
   transporte_otro?: string
   placa_habitual?: string
   epp?: string
-  materiales?: string[]
-  materiales_otros?: string
   autoriza_datos?: boolean
+  /** Firma digital manuscrita (PNG en data URL). */
+  firma?: string
 }
 
 export interface Recuperador {
@@ -144,6 +145,9 @@ export interface Reporte {
   material: { codigo: number | null; nomMaterial: string | null }
   cantidad: number
   valor: number
+  /** Kilogramos rechazados; solo los registros de rechazo lo informan. */
+  rechazo_kg?: number
+  tipo?: TipoRegistro
   subtotal: number
   id_user: number
   usuario: { nomUser: string | null; apeUser: string | null; usuario: string | null }
@@ -155,12 +159,16 @@ export interface Reporte {
   FechaVenta: string
 }
 
+export type TipoRegistro = 'VENTA' | 'RECHAZO'
+
 export interface CreateReporteInput {
+  tipo?: TipoRegistro
   id_eca_macroruta?: number | null
   id_recuperador: number
   id_mat: number
-  cantidad: number
-  valor: number
+  cantidad?: number
+  valor?: number
+  rechazo_kg?: number
   id_eca: number
   FechaVenta?: string
 }
@@ -175,7 +183,6 @@ export interface CreateRecuperadorInput {
   id_estado?: number
   bancarizado: boolean
   foto?: string
-  codigo_registro?: string | null
   caracterizacion?: Caracterizacion
 }
 

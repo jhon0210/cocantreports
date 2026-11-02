@@ -2,13 +2,13 @@ import { z } from 'zod'
 import { todayISO } from '@/lib/format'
 import {
   AFILIACIONES_SALUD,
+  EPS_ANTIOQUIA,
   ESTADOS_CIVILES,
   ESTRATOS,
   GENEROS,
   GRUPOS_RH,
   JORNADAS,
   LUGARES_RECOLECCION,
-  MATERIALES_RECUPERADOS,
   NIVELES_EDUCATIVOS,
   PERTENENCIAS_ETNICAS,
   TIPOS_DOCUMENTO,
@@ -38,7 +38,6 @@ const recuperadorShape = {
   id_estado: z.string().min(1, 'Selecciona el estado'),
   bancarizado: z.boolean(),
   foto: z.string().min(1, 'Toma o sube la foto del recuperador'),
-  codigo_registro: z.string().trim().refine((v) => v === '' || /^[A-Za-z0-9._/-]{1,40}$/.test(v), 'Usa hasta 40 letras, números, punto, guion o barra'),
   fecha_inscripcion: fecha,
   lugar: texto(150),
   pertenece_organizacion: z.boolean(),
@@ -62,6 +61,7 @@ const recuperadorShape = {
   victima_conflicto: z.boolean(),
   ruv: z.boolean(),
   salud: opcion(AFILIACIONES_SALUD),
+  eps: opcion(EPS_ANTIOQUIA),
   dependientes_total: entero(99),
   dependientes_menores: entero(99),
   dependientes_adultos_mayores: entero(99),
@@ -76,9 +76,8 @@ const recuperadorShape = {
   transporte_otro: texto(150),
   placa_habitual: z.string().trim().toUpperCase().refine((v) => v === '' || /^[A-Z0-9-]{3,15}$/.test(v), 'Usa de 3 a 15 letras, números o guiones'),
   epp: opcion(USOS_EPP),
-  materiales: lista(MATERIALES_RECUPERADOS),
-  materiales_otros: texto(150),
   autoriza_datos: z.boolean(),
+  firma: z.string(),
 }
 
 /** La autorización de datos solo se exige al registrar; al editar se conserva lo ya declarado. */
@@ -98,7 +97,6 @@ const buildRecuperadorSchema = (creating: boolean) =>
     if (v.pertenece_organizacion && !v.organizacion_nombre) error('organizacion_nombre', 'Indica el nombre de la organización')
     if (v.discapacidad && !v.discapacidad_tipo) error('discapacidad_tipo', 'Especifica el tipo de discapacidad')
     if (v.transporte.includes('Otro') && !v.transporte_otro) error('transporte_otro', 'Especifica el otro medio de transporte')
-    if (v.materiales.includes('Otros') && !v.materiales_otros) error('materiales_otros', 'Especifica los otros materiales')
     if (creating && !v.autoriza_datos) error('autoriza_datos', 'Debes aceptar la declaración y autorización para registrar')
   })
 

@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { formatCOP, formatDate, formatKg, fullName } from '@/lib/format'
 import type { Recuperador, Reporte } from '@/types/api'
-import { renderCarnet } from './carnet'
+import { renderCarnet, renderCarnetReverso } from './carnet'
 import type { PdfLogo } from './logo'
 
 type Color = [number, number, number]
@@ -287,12 +287,13 @@ export function buildComprobantePdf(reportes: Reporte[], logo: PdfLogo | null = 
     doc.setTextColor(...INK)
     doc.text(fit(material, 84, 8.5, true), columnX[0] + 2, y + 4)
     doc.setTextColor(...MUTED)
-    doc.text(fit(`ECA ${r.eca.nomEca ?? '—'} · Venta ${formatDate(r.FechaVenta)}`, 84, 6.5), columnX[0] + 2, y + 7.6)
+    const rechazo = (r.rechazo_kg ?? 0) > 0
+    doc.text(fit(`${rechazo ? 'RECHAZO · ' : ''}ECA ${r.eca.nomEca ?? '—'} · Venta ${formatDate(r.FechaVenta)}`, 84, 6.5), columnX[0] + 2, y + 7.6)
     doc.setTextColor(...INK)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.5)
-    doc.text(formatKg(r.cantidad), columnX[1] + COLUMNS[1] - 2, y + 5.5, { align: 'right' })
-    doc.text(formatCOP(r.valor), columnX[2] + COLUMNS[2] - 2, y + 5.5, { align: 'right' })
+    doc.text(formatKg(rechazo ? r.rechazo_kg ?? 0 : r.cantidad), columnX[1] + COLUMNS[1] - 2, y + 5.5, { align: 'right' })
+    doc.text(rechazo ? '—' : formatCOP(r.valor), columnX[2] + COLUMNS[2] - 2, y + 5.5, { align: 'right' })
     doc.text(formatCOP(r.subtotal), right - 2, y + 5.5, { align: 'right' })
     guides(y, ROW_HEIGHT)
     y += ROW_HEIGHT
@@ -316,14 +317,18 @@ export function buildComprobantePdf(reportes: Reporte[], logo: PdfLogo | null = 
   doc.line(MARGIN, y, MARGIN + 65, y)
   doc.setFontSize(8)
   doc.setTextColor(...MUTED)
-  doc.text('Firma del recuperador', MARGIN, y + 4.5)
+  doc.text('Firma Administrador de Bodega', MARGIN, y + 4.5)
   return doc.output('blob')
 }
 
-/** Carnet vertical con el diseño institucional y los datos reales del recuperador. */
+/** Carnet vertical con el diseño institucional; el reverso lleva el código de barras del recuperador. */
 export async function buildCarnetPdf(r: Recuperador): Promise<Blob> {
-  const canvas = await renderCarnet(r)
+  const [canvas, reverso] = await Promise.all([renderCarnet(r), renderCarnetReverso(r)])
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [54, 83.16] })
   doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 54, 83.16, undefined, 'FAST')
+  if (reverso) {
+    doc.addPage([54, 83.16], 'portrait')
+    doc.addImage(reverso.toDataURL('image/png'), 'PNG', 0, 0, 54, 83.16, undefined, 'FAST')
+  }
   return doc.output('blob')
 }

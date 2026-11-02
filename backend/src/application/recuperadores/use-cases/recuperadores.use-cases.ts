@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { randomInt } from 'node:crypto';
 import { validarCaracterizacion } from '../../../domain/recuperadores/caracterizacion';
 import { EstadoRecuperadorId } from '../../../domain/recuperadores/estado-recuperador.entity';
 import {
@@ -83,10 +84,7 @@ export class CreateRecuperadorUseCase {
     if (await this.recuperadores.findByCedula(dto.cedula)) {
       throw new ConflictError(`Ya existe un recuperador con la cédula ${dto.cedula}`);
     }
-    const codigoRegistro = dto.codigo_registro ?? null;
-    if (codigoRegistro && (await this.recuperadores.findByCodigoRegistro(codigoRegistro))) {
-      throw new ConflictError(`Ya existe un recuperador con el código de registro ${codigoRegistro}`);
-    }
+    const codigoRegistro = await this.generarCodigoRegistro();
     const caracterizacion = dto.caracterizacion ? validarCaracterizacion(dto.caracterizacion, this.clock.today(), true) : null;
     const creado = await this.recuperadores.create({
       nombre: dto.nombre,
@@ -101,6 +99,15 @@ export class CreateRecuperadorUseCase {
       documentos: dto.documentos ? documentosEntrada(dto.documentos, [], propietarioId) : undefined,
     });
     return RecuperadorMapper.toDto(creado);
+  }
+
+  /** Número aleatorio de 8 dígitos, único entre los recuperadores existentes. */
+  private async generarCodigoRegistro(): Promise<string> {
+    for (let intento = 0; intento < 10; intento++) {
+      const codigo = String(randomInt(10_000_000, 100_000_000));
+      if (!(await this.recuperadores.findByCodigoRegistro(codigo))) return codigo;
+    }
+    throw new ConflictError('No se pudo generar un código de registro único. Intenta de nuevo');
   }
 }
 
@@ -126,14 +133,6 @@ export class UpdateRecuperadorUseCase {
     if (dto.foto_archivo_id && propietarioId) cambios.fotoArchivo = { id: dto.foto_archivo_id, propietarioId };
     if (dto.caracterizacion !== undefined) {
       cambios.caracterizacion = validarCaracterizacion(dto.caracterizacion, this.clock.today(), false);
-    }
-
-    if (dto.codigo_registro !== undefined && dto.codigo_registro !== actual.codigoRegistro) {
-      if (dto.codigo_registro) {
-        const otro = await this.recuperadores.findByCodigoRegistro(dto.codigo_registro);
-        if (otro && otro.id !== id) throw new ConflictError(`Ya existe un recuperador con el código de registro ${dto.codigo_registro}`);
-      }
-      cambios.codigoRegistro = dto.codigo_registro;
     }
 
     if (dto.cedula !== undefined && dto.cedula !== actual.cedula) {
@@ -186,6 +185,20 @@ export class GetRecuperadorByCedulaUseCase {
     if (!CEDULA_REGEX.test(limpia)) throw new ValidationError('La cédula debe contener solo dígitos (5 a 15)');
     const recuperador = await this.recuperadores.findByCedula(limpia);
     if (!recuperador) throw new NotFoundError(`No se encontró un recuperador con la cédula ${limpia}`);
+    return RecuperadorMapper.toDto(recuperador);
+  }
+}
+
+/** Busca por el código único de registro que lleva el código de barras del carnet. */
+@Injectable()
+export class GetRecuperadorByCodigoUseCase {
+  constructor(@Inject(RECUPERADOR_REPOSITORY) private readonly recuperadores: RecuperadorRepository) {}
+
+  async execute(codigo: string): Promise<RecuperadorResponseDto> {
+    const limpio = codigo.trim();
+    if (!/^[A-Za-z0-9._/-]{1,40}$/.test(limpio)) throw new ValidationError('El código de barras no es válido');
+    const recuperador = await this.recuperadores.findByCodigoRegistro(limpio);
+    if (!recuperador) throw new NotFoundError(`No se encontró un recuperador con el código ${limpio}`);
     return RecuperadorMapper.toDto(recuperador);
   }
 }

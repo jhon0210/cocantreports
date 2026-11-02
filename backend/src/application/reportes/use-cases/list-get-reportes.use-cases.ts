@@ -39,6 +39,7 @@ export class ListReportesUseCase {
       cedula: query.cedula,
       idEca: query.id_eca,
       idMat: query.id_mat,
+      soloRechazos: query.tipo === 'RECHAZO',
       limit: query.limit ?? 50,
       offset: query.offset ?? 0,
     });

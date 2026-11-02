@@ -20,4 +20,30 @@ describe('Registrar venta: cantidad en kg', () => {
       values: expect.objectContaining({ cantidad: 0 }),
     })))
   })
+
+  it('en un rechazo pide solo la cantidad rechazada y no cantidad vendida ni valor', async () => {
+    const user = userEvent.setup()
+    const save = vi.fn()
+    render(<ReporteForm ecaId="2" onSubmitValues={save} />)
+    await user.click(await screen.findByRole('tab', { name: 'Registrar Rechazo' }))
+    await user.click(await screen.findByRole('radio', { name: /Cartón/ }))
+    expect(screen.queryByRole('spinbutton', { name: /Cantidad vendida/ })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Valor unitario/)).not.toBeInTheDocument()
+    await user.type(screen.getByRole('spinbutton', { name: /Cantidad rechazada/ }), '3.5')
+    await user.click(screen.getByRole('button', { name: 'Agregar Registro' }))
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      values: expect.objectContaining({ tipo: 'RECHAZO', rechazo_kg: 3.5 }),
+    })))
+  })
+
+  it('exige cantidad rechazada mayor que 0', async () => {
+    const user = userEvent.setup()
+    const save = vi.fn()
+    render(<ReporteForm ecaId="2" onSubmitValues={save} />)
+    await user.click(await screen.findByRole('tab', { name: 'Registrar Rechazo' }))
+    await user.click(await screen.findByRole('radio', { name: /Cartón/ }))
+    await user.click(screen.getByRole('button', { name: 'Agregar Registro' }))
+    expect(await screen.findByText('Ingresa la cantidad rechazada')).toBeInTheDocument()
+    expect(save).not.toHaveBeenCalled()
+  })
 })

@@ -21,13 +21,15 @@ import {
 } from 'class-validator';
 import {
   AFILIACIONES_SALUD,
+  EPS_ANTIOQUIA,
   ESTADOS_CIVILES,
   ESTRATOS,
+  FIRMA_MAX_LENGTH,
+  FIRMA_REGEX,
   GENEROS,
   GRUPOS_RH,
   JORNADAS,
   LUGARES_RECOLECCION,
-  MATERIALES_RECUPERADOS,
   NIVELES_EDUCATIVOS,
   PERTENENCIAS_ETNICAS,
   TIPOS_DOCUMENTO,
@@ -37,7 +39,6 @@ import {
 import { Trim } from '../../../shared/transformers/trim';
 
 export const CEDULA_REGEX = /^\d{5,15}$/;
-export const CODIGO_REGISTRO_REGEX = /^[A-Za-z0-9._/-]{1,40}$/;
 export const FOTO_REGEX = /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$/;
 /** ~1,1 MB de imagen binaria en base64. La app comprime la foto antes de enviarla. */
 export const FOTO_MAX_LENGTH = 1_500_000;
@@ -82,6 +83,7 @@ export class CaracterizacionDto {
   @Booleano() victima_conflicto?: boolean;
   @Booleano() ruv?: boolean;
   @Opcion(AFILIACIONES_SALUD) salud?: string;
+  @Opcion(EPS_ANTIOQUIA) eps?: string;
   @Entero(99) dependientes_total?: number;
   @Entero(99) dependientes_menores?: number;
   @Entero(99) dependientes_adultos_mayores?: number;
@@ -96,9 +98,13 @@ export class CaracterizacionDto {
   @Texto(150) transporte_otro?: string;
   @Texto(15) placa_habitual?: string;
   @Opcion(USOS_EPP) epp?: string;
-  @Lista(MATERIALES_RECUPERADOS) materiales?: string[];
-  @Texto(150) materiales_otros?: string;
   @Booleano() autoriza_datos?: boolean;
+  @ApiPropertyOptional({ description: 'Firma digital manuscrita (PNG en data URL)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(FIRMA_MAX_LENGTH)
+  @Matches(FIRMA_REGEX, { message: 'firma debe ser una imagen PNG en data URL' })
+  firma?: string;
 }
 
 export class EstadoRecuperadorDto {
@@ -206,12 +212,6 @@ export class CreateRecuperadorDto {
   @MaxLength(FOTO_MAX_LENGTH, { message: 'La foto es demasiado grande' })
   @Matches(FOTO_REGEX, { message: 'foto debe ser un data URL image/jpeg o image/png en base64' })
   foto?: string;
-
-  @ApiPropertyOptional({ nullable: true, type: String, example: 'REC-0001', description: 'Código único de registro. Null lo borra.' })
-  @IsOptional()
-  @Trim()
-  @Matches(CODIGO_REGISTRO_REGEX, { message: 'codigo_registro admite letras, números, punto, guion, guion bajo y barra (máx. 40)' })
-  codigo_registro?: string | null;
 
   @ApiPropertyOptional({
     type: CaracterizacionDto,

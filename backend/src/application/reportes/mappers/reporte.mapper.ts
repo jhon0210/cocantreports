@@ -12,6 +12,8 @@ export class ReporteMapper {
       material: { codigo: r.material.codigo, nomMaterial: r.material.nombre },
       cantidad: r.cantidad,
       valor: r.valor,
+      rechazo_kg: r.rechazoKg,
+      tipo: r.rechazoKg > 0 ? 'RECHAZO' : 'VENTA',
       subtotal: r.subtotal,
       id_user: r.idUser,
       usuario: { nomUser: r.usuario.nombre, apeUser: r.usuario.apellido, usuario: r.usuario.usuario },

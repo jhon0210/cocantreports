@@ -40,12 +40,40 @@ export const LUGARES_RECOLECCION = [
 ] as const
 export const TRANSPORTES = ['A pie / Costal o bulto', 'Carretilla manual', 'Motocarro', 'Vehículo automotor', 'Otro'] as const
 export const USOS_EPP = ['Siempre', 'A veces', 'Nunca'] as const
-export const MATERIALES_RECUPERADOS = [
-  'Papel y Cartón',
-  'Plástico (PET, PEAD, PEBD, PVC, etc.)',
-  'Vidrio',
-  'Metales (Hierro, cobre, aluminio, bronce, acero)',
-  'Multicapas / Envases tipo Tetrapak',
-  'RAEE (Residuos de Aparatos Eléctricos y Electrónicos)',
-  'Otros',
+/** EPS con afiliados del régimen contributivo en Antioquia. */
+export const EPS_ANTIOQUIA = [
+  'Nueva EPS',
+  'EPS Sura',
+  'EPS Sanitas',
+  'Salud Total',
+  'Coosalud',
+  'Famisanar',
+  'Savia Salud',
+  'Compensar',
+  'Aliansalud',
+  'Mutual SER',
+  'Asmet Salud',
+  'Otra',
+] as const
+
+/** Comunas y corregimientos del Valle de Aburrá; en los municipios sin comunas se lista el municipio. */
+export const COMUNAS_VALLE_ABURRA = [
+  ...[
+    'Popular', 'Santa Cruz', 'Manrique', 'Aranjuez', 'Castilla', 'Doce de Octubre', 'Robledo', 'Villa Hermosa',
+    'Buenos Aires', 'La Candelaria', 'Laureles - Estadio', 'La América', 'San Javier', 'El Poblado', 'Guayabal', 'Belén',
+  ].map((nombre, i) => `Medellín - Comuna ${i + 1}: ${nombre}`),
+  'Medellín - Corregimiento San Sebastián de Palmitas',
+  'Medellín - Corregimiento San Cristóbal',
+  'Medellín - Corregimiento Altavista',
+  'Medellín - Corregimiento San Antonio de Prado',
+  'Medellín - Corregimiento Santa Elena',
+  ...Array.from({ length: 12 }, (_, i) => `Bello - Comuna ${i + 1}`),
+  ...Array.from({ length: 6 }, (_, i) => `Itagüí - Comuna ${i + 1}`),
+  'Envigado',
+  'Sabaneta',
+  'La Estrella',
+  'Caldas',
+  'Copacabana',
+  'Girardota',
+  'Barbosa',
 ] as const

@@ -1,14 +1,17 @@
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Search } from 'lucide-react'
+import { ScanBarcode, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { Field, describedBy } from '@/components/common/Field'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getErrorMessage, getErrorStatus } from '@/lib/errors'
 import { recuperadoresService } from '@/services/recuperadores.service'
 import type { Recuperador } from '@/types/api'
+import { LectorCodigoBarras } from './LectorCodigoBarras'
 import { cedulaSchema, type CedulaValues } from './schemas'
 
 interface BuscarRecuperadorCardProps {
@@ -17,6 +20,7 @@ interface BuscarRecuperadorCardProps {
 }
 
 export function BuscarRecuperadorCard({ onFound, onNotFound }: BuscarRecuperadorCardProps) {
+  const [modo, setModo] = useState<'cedula' | 'codigo'>('cedula')
   const {
     register,
     handleSubmit,
@@ -38,9 +42,16 @@ export function BuscarRecuperadorCard({ onFound, onNotFound }: BuscarRecuperador
     <Card>
       <CardHeader>
         <CardTitle>Buscar Recuperador</CardTitle>
-        <CardDescription>Consulta al recuperador por su cédula antes de cargar la venta.</CardDescription>
+        <CardDescription>Consulta al recuperador por su cédula o con el lector de código de barras de su carnet.</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="grid gap-3">
+        <Tabs value={modo} onValueChange={(valor) => setModo(valor === 'codigo' ? 'codigo' : 'cedula')}>
+          <TabsList aria-label="Forma de búsqueda">
+            <TabsTrigger value="cedula">Por cédula</TabsTrigger>
+            <TabsTrigger value="codigo"><ScanBarcode aria-hidden="true" /> Por código de barras</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {modo === 'cedula' ? (
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-3 sm:flex-row sm:items-start">
           <div className="flex-1">
             <Field id="cedula-busqueda" label="Cédula del recuperador" error={errors.cedula?.message} required>
@@ -59,6 +70,9 @@ export function BuscarRecuperadorCard({ onFound, onNotFound }: BuscarRecuperador
             <Search /> {isSubmitting ? 'Buscando…' : 'Buscar'}
           </Button>
         </form>
+        ) : (
+        <LectorCodigoBarras onFound={onFound} onNotFound={onNotFound} />
+        )}
       </CardContent>
     </Card>
   )

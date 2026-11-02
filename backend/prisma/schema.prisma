@@ -164,6 +164,8 @@ model Reporte {
   id_mat         Int
   cantidad       Float
   valor          Int
+  /** Kilogramos rechazados; un registro de rechazo lleva cantidad y valor en 0. */
+  rechazo_kg     Float        @default(0)
   id_user        Int
   id_eca         Int
   id_eca_macroruta Int?

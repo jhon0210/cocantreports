@@ -84,10 +84,12 @@ export function PrefacturarPage() {
     setResultado(null)
     setPdf(null)
     try {
-      const [reportes, listaEcas] = await Promise.all([
+      const [todos, listaEcas] = await Promise.all([
         reportesService.listAll({ id_eca: Number(ecaId), ventaDesde, ventaHasta }),
         ecas.data ? Promise.resolve(ecas.data) : ecasService.list(),
       ])
+      // Los rechazos no se compran: no forman parte de la prefactura.
+      const reportes = todos.filter((r) => r.tipo !== 'RECHAZO')
       const eca = listaEcas.find((item) => item.id_eca === Number(ecaId))
       if (!eca) throw new Error('No se encontró la ECA seleccionada.')
       if (!reportes.length) {

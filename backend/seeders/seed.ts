@@ -28,15 +28,14 @@ const CARGOS = [
   { cargo: 'Supervisor', estado: 'Activo' },
 ];
 
+// Catálogo SUI de materiales aprovechables (mismos códigos y nombres que la migración balance_masas_documentos).
 const MATERIALES = [
-  { codigo: 101, nomMaterial: 'Cartón' },
-  { codigo: 102, nomMaterial: 'PET' },
-  { codigo: 103, nomMaterial: 'Vidrio' },
-  { codigo: 104, nomMaterial: 'Chatarra' },
-  { codigo: 105, nomMaterial: 'Aluminio' },
-  { codigo: 106, nomMaterial: 'Papel archivo' },
-  { codigo: 107, nomMaterial: 'Plástico duro' },
-];
+  [101, 'ALUMINIO'], [102, 'CHATARRA'], [103, 'COBRE'], [104, 'BRONCE'], [105, 'ANTIMONIO'], [106, 'ACERO'], [199, 'OTROS METALES'],
+  [201, 'ARCHIVO'], [202, 'CARTON'], [203, 'CUBETAS O PANELES'], [204, 'PERIODICO'], [205, 'PLEGADIZA'], [206, 'TETRA PACK'],
+  [207, 'PLASTIFICADO'], [208, 'KRAP'], [299, 'OTROS PAPELES'],
+  [301, 'ACRILICO'], [302, 'PASTA'], [303, 'PET'], [304, 'PVC'], [305, 'PLASTICO BLANCO'], [306, 'POLIETILENO'], [307, 'SOPLADO'],
+  [308, 'POLIPROPILENO'], [399, 'OTROS PLASTICOS'], [499, 'OTROS VIDRIOS'], [599, 'OTROS TEXTILES'], [699, 'OTROS MADERABLES'],
+].map(([codigo, nomMaterial]) => ({ codigo: codigo as number, nomMaterial: nomMaterial as string }));
 
 const ECAS = [
   { nomEca: 'ECA Centro Verde', direccion: 'Calle 10 # 5-20', comuna: 'Comuna 10', estado: 'Activa', categoria: 'A', ruta: 'R-01', macroruta: 'Macroruta Centro' },

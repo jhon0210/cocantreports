@@ -22,6 +22,7 @@ import {
   CreateRecuperadorUseCase,
   DeleteRecuperadorUseCase,
   GetRecuperadorByCedulaUseCase,
+  GetRecuperadorByCodigoUseCase,
   GetRecuperadorUseCase,
   ListEstadosRecuperadorUseCase,
   ListRecuperadoresUseCase,
@@ -45,6 +46,7 @@ export class RecuperadoresController {
     private readonly updateRecuperador: UpdateRecuperadorUseCase,
     private readonly deleteRecuperador: DeleteRecuperadorUseCase,
     private readonly getByCedula: GetRecuperadorByCedulaUseCase,
+    private readonly getByCodigo: GetRecuperadorByCodigoUseCase,
     private readonly getDocumento: GetDocumentoRecuperadorUseCase,
   ) {}
 
@@ -76,6 +78,13 @@ export class RecuperadoresController {
   @ApiOkResponse({ type: RecuperadorResponseDto })
   byCedula(@Param('cedula') cedula: string): Promise<RecuperadorResponseDto> {
     return this.getByCedula.execute(cedula);
+  }
+
+  @Get('codigo/:codigo')
+  @ApiOperation({ summary: 'Busca un recuperador por el código de barras de su carnet (código único de registro)' })
+  @ApiOkResponse({ type: RecuperadorResponseDto })
+  byCodigo(@Param('codigo') codigo: string): Promise<RecuperadorResponseDto> {
+    return this.getByCodigo.execute(codigo);
   }
 
   @Get(':id')

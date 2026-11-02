@@ -1,9 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsInt, IsNumber, IsOptional, IsPositive, Matches, Max, Min, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsPositive, Matches, Max, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { MAX_CANTIDAD_KG, MAX_VALOR_UNITARIO } from '../../../domain/reportes/reporte.entity';
 
+export const TIPOS_REGISTRO = ['VENTA', 'RECHAZO'] as const;
+const esRechazo = (o: { tipo?: string }) => o.tipo === 'RECHAZO';
+
 export class UpdateReporteDto {
+  @ApiPropertyOptional({ enum: TIPOS_REGISTRO, default: 'VENTA', description: 'RECHAZO solo informa rechazo_kg; no lleva cantidad ni valor' })
+  @IsOptional()
+  @IsIn(TIPOS_REGISTRO)
+  tipo?: (typeof TIPOS_REGISTRO)[number];
+
   @ApiPropertyOptional({ nullable: true, description: 'ECA del catálogo que identifica el código de macroruta y su nombre' })
   @IsOptional()
   @IsInt()
@@ -15,17 +23,26 @@ export class UpdateReporteDto {
   @Min(1)
   id_mat: number;
 
-  @ApiProperty({ example: 12.5 })
+  @ApiPropertyOptional({ example: 12.5, description: 'Obligatorio en las ventas' })
+  @ValidateIf((o) => !esRechazo(o))
   @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 3 })
   @Min(0)
   @Max(MAX_CANTIDAD_KG)
-  cantidad: number;
+  cantidad?: number;
 
-  @ApiProperty({ example: 800 })
+  @ApiPropertyOptional({ example: 800, description: 'Obligatorio en las ventas' })
+  @ValidateIf((o) => !esRechazo(o))
   @IsInt()
   @IsPositive()
   @Max(MAX_VALOR_UNITARIO)
-  valor: number;
+  valor?: number;
+
+  @ApiPropertyOptional({ example: 3.5, description: 'Kilogramos rechazados; obligatorio en los rechazos' })
+  @ValidateIf(esRechazo)
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 3 })
+  @Min(0.001)
+  @Max(MAX_CANTIDAD_KG)
+  rechazo_kg?: number;
 
   @ApiProperty({ example: 1 })
   @IsInt()
@@ -56,6 +73,11 @@ export class CreateReportesBatchDto {
 }
 
 export class ListReportesQueryDto {
+  @ApiPropertyOptional({ enum: TIPOS_REGISTRO, description: 'RECHAZO limita la consulta a los registros de rechazo' })
+  @IsOptional()
+  @IsIn(TIPOS_REGISTRO)
+  tipo?: (typeof TIPOS_REGISTRO)[number];
+
   @ApiPropertyOptional({ description: 'Material de los reportes' })
   @IsOptional()
   @Type(() => Number)
@@ -147,6 +169,8 @@ export class ReporteResponseDto {
   @ApiProperty({ type: ReporteMaterialDto }) material: ReporteMaterialDto;
   @ApiProperty({ description: 'Kilogramos' }) cantidad: number;
   @ApiProperty({ description: 'Valor unitario COP' }) valor: number;
+  @ApiProperty({ description: 'Kilogramos rechazados; solo los registros de rechazo lo informan' }) rechazo_kg: number;
+  @ApiProperty({ enum: TIPOS_REGISTRO }) tipo: (typeof TIPOS_REGISTRO)[number];
   @ApiProperty({ description: 'cantidad * valor, redondeado a pesos' }) subtotal: number;
   @ApiProperty() id_user: number;
   @ApiProperty({ type: ReporteUsuarioDto }) usuario: ReporteUsuarioDto;

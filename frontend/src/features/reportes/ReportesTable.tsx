@@ -93,8 +93,8 @@ export function ReportesTable({ reportes, loading, error, onRetry, onPrint, onEd
                   <TableCell>
                     {r.material.codigo} · {r.material.nomMaterial}
                   </TableCell>
-                  <TableCell className="text-right">{formatKg(r.cantidad)}</TableCell>
-                  <TableCell className="text-right">{formatCOP(r.valor)}</TableCell>
+                  <TableCell className="text-right">{r.tipo === 'RECHAZO' ? <>{formatKg(r.rechazo_kg ?? 0)}<span className="block text-xs text-muted-foreground">Rechazo</span></> : formatKg(r.cantidad)}</TableCell>
+                  <TableCell className="text-right">{r.tipo === 'RECHAZO' ? '—' : formatCOP(r.valor)}</TableCell>
                   <TableCell className="text-right font-semibold">{formatCOP(r.subtotal)}</TableCell>
                   <TableCell className="text-right">
                     {onPrint && (

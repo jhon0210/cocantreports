@@ -1,4 +1,5 @@
-import { ChevronDown, Menu, LogOut, UserRound } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, Menu, LogOut, Settings, UserRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -6,13 +7,17 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { fullName } from '@/lib/format'
 import { logout } from '@/services/auth.service'
 import { useAuthStore } from '@/stores/auth.store'
+import { PanelConfiguracion } from './PanelConfiguracion'
 
 interface HeaderProps {
   onOpenMenu: () => void
+  /** Con menú superpuesto el botón de menú se muestra también en pantallas grandes. */
+  menuSiempreVisible?: boolean
 }
 
-export function Header({ onOpenMenu }: HeaderProps) {
+export function Header({ onOpenMenu, menuSiempreVisible = false }: HeaderProps) {
   const user = useAuthStore((s) => s.user)
+  const [configuracionAbierta, setConfiguracionAbierta] = useState(false)
 
   const handleLogout = async () => {
     try {
@@ -24,10 +29,15 @@ export function Header({ onOpenMenu }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur sm:px-5">
-      <Button type="button" variant="ghost" size="icon" className="lg:hidden" onClick={onOpenMenu} aria-label="Abrir menú de navegación">
+      <Button type="button" variant="ghost" size="icon" className={menuSiempreVisible ? undefined : 'lg:hidden'} onClick={onOpenMenu} aria-label="Abrir menú de navegación">
         <Menu />
       </Button>
       <h1 className="flex-1 truncate text-sm font-semibold tracking-tight">Aplicación de Reportes</h1>
+
+      <Button type="button" variant="ghost" size="icon" onClick={() => setConfiguracionAbierta(true)} aria-label="Abrir configuración de diseño">
+        <Settings />
+      </Button>
+      <PanelConfiguracion open={configuracionAbierta} onOpenChange={setConfiguracionAbierta} />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
