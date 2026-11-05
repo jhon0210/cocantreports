@@ -41,6 +41,19 @@ const toInput = (v: ReporteValues): UpdateReporteInput => ({
   FechaVenta: v.FechaVenta || undefined,
 })
 
+/** Un mismo recuperador no puede tener dos registros del mismo material y tipo (venta o rechazo) en el reporte. */
+function validarMaterialNoRepetido(registros: RegistroPendiente[], nuevo: RegistroVenta, idRecuperador: number, ignorarKey?: string): void {
+  const repetido = registros.find((r) =>
+    r.key !== ignorarKey
+    && r.recuperador.id_recuperador === idRecuperador
+    && r.values.id_mat === nuevo.values.id_mat
+    && esRechazo(r.values) === esRechazo(nuevo.values))
+  if (repetido) {
+    const nombre = nuevo.material.nomMaterial ?? `Material ${nuevo.material.codigo ?? ''}`.trim()
+    throw new Error(`«${nombre}» ya está agregado${esRechazo(nuevo.values) ? ' como rechazo' : ''}. Edita ese registro en lugar de agregarlo otra vez.`)
+  }
+}
+
 const toValues = (r: Reporte): ReporteValues => ({
   tipo: r.tipo === 'RECHAZO' ? 'RECHAZO' : 'VENTA',
   id_eca_macroruta: r.id_eca_macroruta ? String(r.id_eca_macroruta) : '',
@@ -195,6 +208,7 @@ export function CrearReportePage() {
                     ecaId={ecaVenta}
                     macrorutaId={macrorutaVenta}
                     onSubmitValues={(registro) => {
+                      validarMaterialNoRepetido(registros, registro, recuperador.id_recuperador)
                       setRegistros((prev) => [...prev, { ...registro, key: crypto.randomUUID(), recuperador }])
                     }}
                   />
@@ -266,6 +280,7 @@ export function CrearReportePage() {
               initialValues={editingDraft.values}
               onCancel={() => setEditingDraft(null)}
               onSubmitValues={(registro) => {
+                validarMaterialNoRepetido(registros, registro, editingDraft.recuperador.id_recuperador, editingDraft.key)
                 setRegistros((prev) => prev.map((r) => r.key === editingDraft.key ? { ...r, ...registro } : r))
                 setEditingDraft(null)
               }}

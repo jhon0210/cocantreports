@@ -40,7 +40,7 @@ const normalizar = (value: string) => value.normalize('NFD').replace(/[\u0300-\u
 
 export const BALANCE_SUGERENCIAS = [
   'Placa: se muestra la placa habitual actual de Caracterizar Recuperador, sin espacios ni guiones. No confirma el vehículo histórico del ingreso; verificarlo con sus soportes y el catálogo de vehículos reportado al SUI.',
-  'Rechazo: se registra en Crear Reporte con «Registrar Rechazo» y se suma por recuperador, placa, material y semana. El archivo lo expresa en kilogramos; un recuperador que nunca ha tenido rechazos reporta 0, y si hay rechazos suyos en otros ingresos sin registro en esta fila queda vacío.',
+  'Rechazo: se registra en Crear Reporte con «Registrar Rechazo» y se suma por recuperador, placa, material y semana. El archivo lo expresa en kilogramos; las filas sin ningún rechazo registrado reportan 0.',
   'Destino: por defecto se usa tipo 1 (relleno sanitario) y el número único 1724818150; cambiarlos en el Excel si algún rechazo tuvo otro destino.',
   'Fecha: confirmar si la fecha de venta coincide con el ingreso físico. Si no coincide, registrar una fecha de ingreso independiente.',
   'Catálogos: resolver las diferencias de código/nombre antes de usar el archivo en el SUI; no se han reemplazado materiales existentes.',
@@ -64,21 +64,24 @@ interface GrupoBalance {
 }
 
 const aGramos = (kg: number) => Math.round(kg * 1000)
+/** Gramos enteros a kilogramos con exactamente 3 decimales, sin arrastre de coma flotante. */
+const aKg = (gramos: number) => Number((gramos / 1000).toFixed(3))
 const TIPO_SITIO_DESTINO = 1
 const NUMERO_SITIO_DESTINO = 1724818150
 /** Enteros sin decimales; solo muestra decimales cuando el peso no es un kilogramo exacto. */
 export const formatoKg = (value: number) => (Number.isInteger(value) ? '0' : '0.###')
 
 /**
- * Una fila por ECA, macroruta, semana, recuperador, placa y material. Las cantidades se suman en gramos enteros
- * (sin errores de coma flotante) y se expresan en kilogramos; los rechazos se suman en la misma fila.
+ * Una fila por ECA, macroruta, mes, semana, recuperador, placa y material. Las cantidades se suman en gramos enteros
+ * (sin errores de coma flotante) y se expresan en kilogramos; los rechazos se suman en la misma fila y, sin rechazos, valen 0.
  */
-export function construirBalance(reportes: Reporte[], recuperadoresConRechazo?: ReadonlySet<number>): BalanceFila[] {
+export function construirBalance(reportes: Reporte[]): BalanceFila[] {
   const grupos = new Map<string, GrupoBalance>()
   for (const r of reportes) {
     const semana = Math.ceil(Number(r.FechaVenta.slice(8, 10)) / 7)
     const placa = r.recuperador?.placa_habitual?.replace(/[\s-]/g, '').toUpperCase() ?? ''
-    const clave = [r.eca.codigo_nuec, r.macroruta?.codigo, semana, r.recuperador?.tipo_documento, r.recuperador?.cedula ?? `sin-${r.id_recuperador}`, placa, r.id_mat].join('|')
+    // El mes forma parte de la clave: la semana es "del mes" y un rango puede abarcar varios meses.
+    const clave = [r.eca.codigo_nuec, r.macroruta?.codigo, r.FechaVenta.slice(0, 7), semana, r.recuperador?.tipo_documento, r.recuperador?.cedula ?? `sin-${r.id_recuperador}`, placa, r.id_mat].join('|')
     const grupo = grupos.get(clave) ?? { base: r, consecutivos: [], fecha: r.FechaVenta, semana, entranteG: 0, rechazoG: 0 }
     grupo.consecutivos.push(r.consecutivo)
     if (r.FechaVenta < grupo.fecha) grupo.fecha = r.FechaVenta
@@ -110,10 +113,7 @@ export function construirBalance(reportes: Reporte[], recuperadoresConRechazo?: 
     novedades.push(placa
       ? 'Placa tomada de la caracterización habitual actual del recuperador; no confirma el vehículo histórico de este ingreso'
       : 'Placa del vehículo no registrada')
-    // Quien nunca ha tenido rechazos (según el historial consultado) reporta 0; sin ese historial el dato queda pendiente.
-    const sinRechazosHistoricos = rechazoG === 0 && !!recuperadoresConRechazo && r.id_recuperador != null && !recuperadoresConRechazo.has(r.id_recuperador)
-    if (rechazoG === 0 && !sinRechazosHistoricos) novedades.push('Rechazo no registrado')
-    else if (rechazoG > entranteG) novedades.push('El rechazo supera la cantidad de material entrante de la fila')
+    if (rechazoG > entranteG) novedades.push('El rechazo supera la cantidad de material entrante de la fila')
     if (consecutivos.length > 1) novedades.push(`Fila que suma ${consecutivos.length} registros de la misma semana, recuperador, placa y material: N.° ${[...consecutivos].sort((a, b) => a - b).join(', ')}`)
     return {
       reporte: Math.min(...consecutivos),
@@ -125,9 +125,9 @@ export function construirBalance(reportes: Reporte[], recuperadoresConRechazo?: 
         tipo ?? null,
         r.recuperador?.cedula ?? null,
         placa,
-        entranteG / 1000,
+        aKg(entranteG),
         codigoSui,
-        rechazoG > 0 ? rechazoG / 1000 : sinRechazosHistoricos ? 0 : null,
+        aKg(rechazoG),
         TIPO_SITIO_DESTINO, NUMERO_SITIO_DESTINO,
       ],
       novedades,
@@ -169,7 +169,7 @@ export async function exportBalanceMasas(filas: BalanceFila[], periodo: string):
       sheet: 'Novedades',
       data: [
         [text('Periodo'), text(periodo)],
-        [text('Borrador incompleto: los datos no disponibles se dejan vacíos, no se reemplazan con cero.')],
+        [text('Los datos no disponibles se dejan vacíos y no se reemplazan con cero; el rechazo sin registros se reporta en 0.')],
         [text('Cantidad: kilogramos (peso real; enteros cuando el peso es exacto). Semana del mes: 1–7, 8–14, 15–21, 22–28 y 29–31. Fecha usada: venta.')],
         header(['Registro de venta', 'Fecha de venta', 'Novedad']),
         ...novedades,

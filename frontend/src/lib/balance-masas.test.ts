@@ -17,8 +17,29 @@ describe('balance de masas', () => {
   it('exporta once columnas en kilogramos y códigos sin inventar los datos pendientes', () => {
     const [fila] = construirBalance([reporte])
     expect(BALANCE_HEADERS).toHaveLength(11)
-    expect(fila.celdas).toEqual(['1153705088', '1435905088', 4, 1, '00123456', null, 1250, 202, null, 1, 1724818150])
-    expect(fila.novedades).toHaveLength(2)
+    expect(fila.celdas).toEqual(['1153705088', '1435905088', 4, 1, '00123456', null, 1250, 202, 0, 1, 1724818150])
+    expect(fila.novedades).toHaveLength(1)
+  })
+
+  it('suma exacta de decimales y rechazo en 0 cuando no hay rechazos', () => {
+    const filas = construirBalance([
+      { ...reporte, consecutivo: 1, cantidad: 0.1, FechaVenta: '2026-10-22' },
+      { ...reporte, consecutivo: 2, cantidad: 0.2, FechaVenta: '2026-10-23' },
+      { ...reporte, consecutivo: 3, cantidad: 2.35, FechaVenta: '2026-10-24' },
+      { ...reporte, consecutivo: 4, cantidad: 0.007, FechaVenta: '2026-10-25' },
+    ])
+    expect(filas).toHaveLength(1)
+    expect(filas[0].celdas[6]).toBe(2.657)
+    expect(filas[0].celdas[8]).toBe(0)
+    expect(filas[0].novedades.join(' ')).not.toContain('Rechazo no registrado')
+  })
+
+  it('no mezcla la misma semana de meses distintos al consultar un rango', () => {
+    const filas = construirBalance([
+      { ...reporte, consecutivo: 1, cantidad: 3, FechaVenta: '2026-09-02' },
+      { ...reporte, consecutivo: 2, cantidad: 4, FechaVenta: '2026-10-02' },
+    ])
+    expect(filas.map((f) => f.celdas[6])).toEqual([3, 4])
   })
 
   it('suma en una sola fila los ingresos de la misma semana, recuperador, placa y material, y aporta el rechazo', () => {
@@ -32,23 +53,13 @@ describe('balance de masas', () => {
     expect(filas[0].celdas[6]).toBe(0.3)
     expect(filas[0].celdas[8]).toBe(0.05)
     expect(filas[0].reporte).toBe(2)
-    expect(filas[0].novedades.join(' ')).not.toContain('Rechazo no registrado')
     expect(filas[0].novedades.join(' ')).toContain('suma 3 registros')
-    expect(filas[1].celdas.slice(6, 9)).toEqual([7, 202, null])
+    expect(filas[1].celdas.slice(6, 9)).toEqual([7, 202, 0])
   })
 
   it('advierte cuando el rechazo supera el material entrante', () => {
     const [fila] = construirBalance([{ ...reporte, cantidad: 1, rechazo_kg: 2, tipo: 'RECHAZO' }])
     expect(fila.novedades.join(' ')).toContain('rechazo supera')
-  })
-
-  it('un recuperador que nunca ha tenido rechazos reporta 0; si los tuvo en otro ingreso, queda vacío', () => {
-    const sin = construirBalance([reporte], new Set())
-    expect(sin[0].celdas[8]).toBe(0)
-    expect(sin[0].novedades.join(' ')).not.toContain('Rechazo no registrado')
-    const con = construirBalance([reporte], new Set([1]))
-    expect(con[0].celdas[8]).toBeNull()
-    expect(con[0].novedades.join(' ')).toContain('Rechazo no registrado')
   })
 
   it.each([[1, 1], [7, 1], [8, 2], [14, 2], [15, 3], [21, 3], [22, 4], [28, 4], [29, 5], [31, 5]])('el día %i corresponde a semana %i', (dia, semana) => {
@@ -95,7 +106,8 @@ describe('balance de masas', () => {
       expect(sheets[0].stickyRowsCount).toBe(1)
       expect(sheets[0].data[1][4]).toMatchObject({ value: '00123456', type: String })
       expect(sheets[0].data[1][6]).toMatchObject({ value: 1250, type: Number, format: '0' })
-      for (const i of [5, 8]) expect(sheets[0].data[1][i]).not.toHaveProperty('value')
+      for (const i of [5]) expect(sheets[0].data[1][i]).not.toHaveProperty('value')
+      expect(sheets[0].data[1][8]).toMatchObject({ value: 0, type: Number })
       expect(sheets[0].data[1][9]).toMatchObject({ value: 1, type: Number })
       expect(sheets[0].data[1][10]).toMatchObject({ value: 1724818150, type: Number })
       expect(sheets[1].data[4][0].value).toBe(1)
@@ -135,7 +147,8 @@ describe('balance de masas', () => {
       expect(valor('G2')).toBe('1250')
       expect(valor('J2')).toBe('1')
       expect(valor('K2')).toBe('1724818150')
-      for (const ref of ['F2', 'I2']) expect(valor(ref)).toBeNull()
+      for (const ref of ['F2']) expect(valor(ref)).toBeNull()
+      expect(valor('I2')).toBe('0')
       expect(sheet.getElementsByTagName('pane')[0].getAttribute('ySplit')).toBe('1')
       expect(strFromU8(zip['xl/styles.xml'])).not.toContain('0.000000')
     } finally { vi.doUnmock('write-excel-file/browser') }

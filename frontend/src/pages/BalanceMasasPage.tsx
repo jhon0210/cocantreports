@@ -16,32 +16,37 @@ import { reportesService } from '@/services/reportes.service'
 
 export function BalanceMasasPage() {
   const ecas = useQuery(ecasService.list)
-  const [periodo, setPeriodo] = useState(todayISO().slice(0, 7))
+  const hoy = todayISO()
+  const [desde, setDesde] = useState(`${hoy.slice(0, 7)}-01`)
+  const [hasta, setHasta] = useState(hoy)
   const [eca, setEca] = useState('todas')
   const [resultado, setResultado] = useState<{ periodo: string; filas: BalanceFila[] } | null>(null)
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const cargar = async (mes: string, idEca?: number) => {
-    const [year, month] = mes.split('-').map(Number)
-    const ultimo = new Date(Date.UTC(year, month, 0)).getUTCDate()
-    const reportes = await reportesService.balanceMasas({ ventaDesde: `${mes}-01`, ventaHasta: `${mes}-${ultimo}`, ...(idEca === undefined ? {} : { id_eca: idEca }) })
-    const historicos = await reportesService.balanceMasas({ ventaHasta: `${mes}-${ultimo}`, tipo: 'RECHAZO' })
-    const conRechazo = new Set(historicos.flatMap((r) => (r.id_recuperador == null ? [] : [r.id_recuperador])))
-    return construirBalance(reportes, conRechazo)
-  }
+  const cargar = async (inicio: string, fin: string, idEca?: number) =>
+    construirBalance(await reportesService.balanceMasas({ ventaDesde: inicio, ventaHasta: fin, ...(idEca === undefined ? {} : { id_eca: idEca }) }))
   const consultar = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo)) {
-      setError('Selecciona un mes válido')
+    if (!desde || !hasta) {
+      setError('Selecciona la fecha inicial y la final')
       return
     }
+    if (desde > hasta) {
+      setError('La fecha inicial no puede ser posterior a la final')
+      return
+    }
+    if (hasta > hoy) {
+      setError('La fecha final no puede ser futura')
+      return
+    }
+    const periodo = desde === hasta ? desde : `${desde}_a_${hasta}`
     setBusy(true)
     setError(null)
     setResultado(null)
     try {
-      const filas = await cargar(periodo, eca === 'todas' ? undefined : Number(eca))
+      const filas = await cargar(desde, hasta, eca === 'todas' ? undefined : Number(eca))
       // Consultar exporta de inmediato el Excel; la pantalla solo confirma el resultado.
       if (filas.length) await exportBalanceMasas(filas, periodo)
       setResultado({ periodo, filas })
@@ -65,12 +70,15 @@ export function BalanceMasasPage() {
   }
   return (
     <>
-      <PageHeader title="Balance de Masas" description="Exporta a Excel el balance de masas mensual de ingresos de material a la ECA." />
+      <PageHeader title="Balance de Masas" description="Exporta a Excel el balance de masas de ingresos de material a la ECA en el rango de fechas que elijas." />
       <div className="grid gap-4">
         <GradientFrame innerClassName="px-5 py-4">
-          <form onSubmit={(event) => void consultar(event)} className="grid items-end gap-3 sm:grid-cols-3">
-            <Field id="balance-periodo" label="Mes de recepción según reportes" required>
-              <Input id="balance-periodo" type="month" max={todayISO().slice(0, 7)} value={periodo} onChange={(e) => { setPeriodo(e.target.value); setResultado(null) }} required disabled={busy || exporting} />
+          <form onSubmit={(event) => void consultar(event)} className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Field id="balance-desde" label="Fecha inicial" required>
+              <Input id="balance-desde" type="date" max={hasta || hoy} value={desde} onChange={(e) => { setDesde(e.target.value); setResultado(null) }} required disabled={busy || exporting} />
+            </Field>
+            <Field id="balance-hasta" label="Fecha final" required>
+              <Input id="balance-hasta" type="date" min={desde} max={hoy} value={hasta} onChange={(e) => { setHasta(e.target.value); setResultado(null) }} required disabled={busy || exporting} />
             </Field>
             <Field id="balance-eca" label="ECA">
               <Select value={eca} onValueChange={(v) => { setEca(v); setResultado(null) }} disabled={busy || exporting || ecas.loading || !!ecas.error}>
@@ -87,7 +95,7 @@ export function BalanceMasasPage() {
           {error && <Alert variant="destructive" className="mt-3"><AlertDescription>{error}</AlertDescription></Alert>}
         </GradientFrame>
         <Alert><AlertDescription>
-          Este módulo exporta a Excel el balance de masas mensual de las ECAs: el material que ingresa por recuperador, material y semana, con sus rechazos, según el art. 2.3.2.5.2.13 del Decreto 1077 de 2015 (modificado por el Decreto 1381 de 2024) y los arts. 12 a 14 de la Resolución MinVivienda 412 de 2026. Es un borrador de apoyo, no un cargue oficial al SUI.
+          Este módulo exporta a Excel el balance de masas de las ECAs en el rango de fechas elegido: el material que ingresa por recuperador, material y semana, con sus rechazos, según el art. 2.3.2.5.2.13 del Decreto 1077 de 2015 (modificado por el Decreto 1381 de 2024) y los arts. 12 a 14 de la Resolución MinVivienda 412 de 2026. Es un borrador de apoyo, no un cargue oficial al SUI.
         </AlertDescription></Alert>
         {resultado && (
           resultado.filas.length ? (

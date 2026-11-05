@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Controller, useForm, useWatch, type Control, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Save, X } from 'lucide-react'
+import { CircleAlert, Save, TriangleAlert, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { CameraCapture } from '@/components/common/CameraCapture'
 import { CheckboxGroup } from '@/components/common/CheckboxGroup'
@@ -11,6 +11,7 @@ import { GradientFrame } from '@/components/common/GradientFrame'
 import { QueryState } from '@/components/common/QueryState'
 import { SignaturePad } from '@/components/common/SignaturePad'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -56,6 +57,37 @@ type ListField = FieldOf<string[]>
 const NONE = '__none__'
 const PASOS = ['Registro', 'Identificación', 'Socioeconómica', 'Actividad', 'Documentos', 'Autorización'] as const
 
+interface CampoFaltante {
+  nombre: string
+  etiqueta: string
+  mensaje: string
+  paso: number
+}
+
+/** Nombre legible de cada campo que puede impedir el guardado. */
+const ETIQUETAS_CAMPOS: Record<string, string> = {
+  nombre: 'Nombres',
+  apellido: 'Apellidos',
+  cedula: 'Número de documento',
+  id_estado: 'Estado',
+  foto: 'Foto del recuperador',
+  fecha_inscripcion: 'Fecha de inscripción',
+  tipo_documento: 'Tipo de documento',
+  tipo_documento_otro: 'Tipo de documento (otro)',
+  fecha_nacimiento: 'Fecha de nacimiento',
+  organizacion_nombre: 'Nombre de la organización',
+  discapacidad_tipo: 'Tipo de discapacidad',
+  transporte_otro: 'Otro medio de transporte',
+  telefono: 'Teléfono / Celular',
+  placa_habitual: 'Placa habitual',
+  dependientes_total: 'Total de dependientes',
+  dependientes_menores: 'Menores de edad',
+  dependientes_adultos_mayores: 'Adultos mayores',
+  dependientes_discapacidad: 'Personas con discapacidad',
+  experiencia_anios: 'Experiencia (años)',
+  autoriza_datos: 'Declaración y autorización',
+}
+
 const DEPENDIENTES = [
   ['dependientes_total', 'Total de dependientes'],
   ['dependientes_menores', 'Menores de edad'],
@@ -94,19 +126,23 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
     handleSubmit,
     reset,
     setError,
-    formState: { errors, isSubmitting, isValid },
+    formState: { errors, isSubmitting },
   } = useForm<RecuperadorValues>({
     resolver: zodResolver(editing ? editarRecuperadorSchema : recuperadorSchema),
     defaultValues: recuperador ? toValues(recuperador) : emptyValues(),
     shouldFocusError: false,
-    mode: 'onChange',
+    // Se valida al enviar y luego en cada cambio solo de los campos con error: evita validar todo el formulario en cada tecla.
+    mode: 'onSubmit',
+    reValidateMode: 'onChange',
   })
+  const [faltantes, setFaltantes] = useState<CampoFaltante[] | null>(null)
 
   // Al cambiar de recuperador (o salir del modo edición) el formulario se reinicia.
   useEffect(() => {
     reset(recuperador ? toValues(recuperador) : emptyValues())
     setDocumentos(recuperador?.documentos ?? [])
     setPaso(0)
+    setFaltantes(null)
   }, [recuperador, reset])
 
   const [pertenece, tipoDocumento, nacimiento, discapacidad, victima, transporte, salud, comuna] = useWatch({
@@ -152,20 +188,28 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
     }
   }
 
+  const irACampo = (nombre: string, destinoPaso: number) => {
+    setFaltantes(null)
+    setPaso(destinoPaso)
+    requestAnimationFrame(() => {
+      const campo = formRef.current?.querySelector<HTMLElement>(`[id="${nombre}"]`)
+      const control = campo?.matches('input, button, select, textarea') ? campo : campo?.querySelector<HTMLElement>('input, button, select, textarea')
+      ;(control ?? campo)?.focus()
+      campo?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+  }
+
   const onInvalid = (invalid: FieldErrors<RecuperadorValues>) => {
-    toast.error('Revisa los campos marcados en el formulario.')
-    const campos = Array.from(formRef.current?.querySelectorAll<HTMLElement>('[id]') ?? [])
-    const campo = campos.find((element) => Object.hasOwn(invalid, element.id))
-    const panel = campo?.closest<HTMLElement>('[data-form-step]')
-    if (panel) {
-      setPaso(Number(panel.dataset.formStep))
-      requestAnimationFrame(() => {
-        const control = campo?.matches('input, button, select, textarea') ? campo : campo?.querySelector<HTMLElement>('input, button, select, textarea')
-        const destino = control ?? panel
-        destino.focus()
-        panel.scrollIntoView({ block: 'start', behavior: 'smooth' })
-      })
-    }
+    const lista = Object.entries(invalid).map(([nombre, error]): CampoFaltante => {
+      const panel = formRef.current?.querySelector<HTMLElement>(`[id="${nombre}"]`)?.closest<HTMLElement>('[data-form-step]')
+      return {
+        nombre,
+        etiqueta: ETIQUETAS_CAMPOS[nombre] ?? nombre,
+        mensaje: typeof error?.message === 'string' ? error.message : 'Revisa este campo',
+        paso: panel ? Number(panel.dataset.formStep) : 0,
+      }
+    }).sort((a, b) => a.paso - b.paso)
+    setFaltantes(lista)
   }
   const message = (name: keyof RecuperadorValues) => errors[name]?.message as string | undefined
 
@@ -440,11 +484,44 @@ export function RecuperadorForm({ recuperador, onSaved, onCancel }: RecuperadorF
                 <X /> Cancelar
               </Button>
             )}
-            {isValid && <Button type="submit" disabled={isSubmitting || leyendoDocumentos}>
+            <Button type="submit" disabled={isSubmitting || leyendoDocumentos}>
               <Save /> {isSubmitting ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar y generar carnet'}
-            </Button>}
+            </Button>
           </div>
-          {!isValid && <p className="mt-3 text-right text-xs text-muted-foreground">Completa los campos obligatorios (*) y corrige los errores para mostrar el botón de guardar.</p>}
+          <Dialog open={faltantes !== null} onOpenChange={(abierto) => { if (!abierto) setFaltantes(null) }}>
+            <DialogContent className="max-h-[85dvh] gap-0 overflow-hidden p-0 sm:max-w-lg">
+              <DialogHeader className="items-center border-b bg-gradient-to-br from-amber-500/15 via-amber-400/5 to-transparent px-6 pt-7 pb-5 text-center sm:text-center">
+                <span className="mb-1 flex size-14 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 ring-8 ring-amber-500/10 dark:text-amber-400" aria-hidden="true">
+                  <TriangleAlert className="size-7" />
+                </span>
+                <DialogTitle className="text-lg">Faltan datos por completar</DialogTitle>
+                <DialogDescription>
+                  {faltantes?.length === 1 ? 'Hay 1 campo que debes completar o corregir' : `Hay ${faltantes?.length ?? 0} campos que debes completar o corregir`} antes de guardar. Pulsa uno para ir directo a él.
+                </DialogDescription>
+              </DialogHeader>
+              <ul className="grid max-h-[45dvh] gap-2 overflow-y-auto px-5 py-4">
+                {faltantes?.map((f) => (
+                  <li key={f.nombre}>
+                    <button
+                      type="button"
+                      onClick={() => irACampo(f.nombre, f.paso)}
+                      className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive" aria-hidden="true"><CircleAlert className="size-4" /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold">{f.etiqueta}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{f.mensaje}</span>
+                      </span>
+                      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[0.68rem] font-medium text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary">{PASOS[f.paso]}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <DialogFooter className="border-t px-5 py-3">
+                <Button type="button" onClick={() => faltantes?.[0] && irACampo(faltantes[0].nombre, faltantes[0].paso)}>Ir al primer campo</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </form>
       </QueryState>
     </GradientFrame>
